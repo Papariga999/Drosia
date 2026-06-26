@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/LocaleProvider";
 import { LangSwitch } from "@/components/ui/LangSwitch";
 import { PhotoPlaceholder } from "@/components/ui/Photo";
-import { DrosiaMark } from "@/components/brand/Logo";
+import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { fill } from "@/lib/i18n";
 import { REPORT_CATEGORIES, CATEGORY_META, categoryLabel, type ReportCategory } from "@/lib/categories";
 import { MAX_PHOTOS, MAX_DESCRIPTION } from "@/lib/report-intake";
@@ -234,21 +234,21 @@ export function ReportFlow() {
               </span>
             )}
             <div className="relative h-[240px] overflow-hidden rounded-[20px] border border-line-strong">
-              <div
-                aria-hidden
+              <DrosiaMap
+                points={
+                  coords
+                    ? [{ lat: coords.lat, lng: coords.lng, color: "var(--primary)", title: dict.flow.locDetected }]
+                    : []
+                }
+                center={coords ? [coords.lat, coords.lng] : undefined}
+                zoom={coords ? 15 : undefined}
+                fitToMarkers={!!coords}
+                interactive={false}
+                showAttribution={false}
+                showZoomControl={false}
                 className="absolute inset-0"
-                style={{
-                  background: "linear-gradient(135deg,#dce8e6,#cadbd9)",
-                  backgroundImage:
-                    "linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px)",
-                  backgroundSize: "38px 38px",
-                }}
+                ariaLabel={dict.flow.s2Title}
               />
-              {coords && (
-                <div className="absolute left-1/2 top-[48%] -translate-x-1/2 -translate-y-full">
-                  <DrosiaMark className="h-12 w-auto text-primary" />
-                </div>
-              )}
               <div className="absolute bottom-3 left-3 rounded-lg bg-surface-card/90 px-2.5 py-1.5 text-[11px] font-semibold text-slate">
                 {coords ? (
                   <span className="tnum">

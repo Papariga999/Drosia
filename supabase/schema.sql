@@ -298,9 +298,9 @@ grant select on v_authority_scorecard   to anon, authenticated;
 -- ── Intake RPC: geofence + authority routing + insert, atomic ───────────────
 -- Called SERVER-SIDE ONLY (service role) from the rate-limited /api/report route,
 -- AFTER originals have been uploaded to the private bucket. One transaction:
---   • Geofence: the point must fall inside an ACTIVE country with a loaded
---     boundary (ST_Covers). No match → raises OUT_OF_BOUNDS (the route then
---     deletes the just-uploaded blobs, so nothing is orphaned).
+--   • Geofence: temporarily relaxed for cross-country testing. If the point
+--     falls inside an ACTIVE country boundary, country_code is set from data.
+--     If not, country_code stays null and the report is held for admin review.
 --   • Authority routing: smallest covering polygon wins (most specific); no
 --     match → authority_id stays null and the report is flagged for admin review.
 -- Photos start blur_status='pending'; the report is NOT public until anonymized.
@@ -333,10 +333,6 @@ begin
     and boundary is not null
     and st_covers(boundary, v_point)
   limit 1;
-
-  if v_country is null then
-    raise exception 'OUT_OF_BOUNDS' using errcode = 'P0001';
-  end if;
 
   select id into v_authority
   from authorities

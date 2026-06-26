@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { DrosiaMark } from "@/components/brand/Logo";
+import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { CATEGORY_META, isReportCategory } from "@/lib/categories";
 import { reportAgeDays } from "@/lib/severity";
 import type {
@@ -372,6 +373,22 @@ function DetailView({
             <span className="text-[11px] text-[#9DB1B5]">Original is service-role only (signed-URL view: next)</span>
             <span className="ml-auto rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: blurDone ? "#EAFBF1" : "#FFF4DC", color: blurDone ? "#1B8B4A" : "#B7820E" }}>
               blur: {blurDone ? "done" : `${report.blur_done_count}/${report.photo_count}`}
+            </span>
+          </div>
+          <div className="relative mt-3 h-[190px] overflow-hidden rounded-[10px] border border-[#E3EDEE]">
+            <DrosiaMap
+              points={[{ lat: report.lat, lng: report.lng, color: "#00A6BC", title: report.public_token }]}
+              center={[report.lat, report.lng]}
+              zoom={15}
+              fitToMarkers={false}
+              interactive={false}
+              showAttribution={false}
+              showZoomControl={false}
+              className="absolute inset-0"
+              ariaLabel="Report location map"
+            />
+            <span className="tnum absolute bottom-2 right-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-bold text-[#5B7378] shadow-card">
+              {report.lat.toFixed(5)}, {report.lng.toFixed(5)}
             </span>
           </div>
         </div>

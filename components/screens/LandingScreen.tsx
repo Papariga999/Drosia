@@ -6,8 +6,10 @@ import { LangSwitch } from "@/components/ui/LangSwitch";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ButtonLink } from "@/components/ui/Button";
 import { DrosiaMark } from "@/components/brand/Logo";
+import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { useLocale } from "@/components/LocaleProvider";
 import type { LandingStats } from "@/lib/stats";
+import type { PublicReport } from "@/lib/mock";
 
 function rateColor(rate: number): string {
   if (rate >= 60) return "var(--sev-fresh)";
@@ -32,7 +34,7 @@ function useCountUp(target: number, duration = 1400) {
   return value;
 }
 
-export function LandingScreen({ stats }: { stats: LandingStats }) {
+export function LandingScreen({ stats, reports }: { stats: LandingStats; reports: PublicReport[] }) {
   const { locale, dict } = useLocale();
   const shock = useCountUp(stats.ignoredDays);
   const hasBoard = stats.board.length > 0;
@@ -70,21 +72,14 @@ export function LandingScreen({ stats }: { stats: LandingStats }) {
           </Link>
         </div>
         <Link href="/map" className="relative block h-[220px] overflow-hidden rounded-[20px] border border-line-strong">
-          <div
-            aria-hidden
+          <DrosiaMap
+            reports={reports}
+            interactive={false}
+            showAttribution={false}
+            showZoomControl={false}
             className="absolute inset-0"
-            style={{
-              background: "linear-gradient(135deg,#dde9e7,#c7dad7)",
-              backgroundImage:
-                "linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px)",
-              backgroundSize: "42px 42px",
-            }}
+            ariaLabel={dict.landing.mapTitle}
           />
-          <Cluster left="24%" top="30%" n={8} />
-          <Pin left="55%" top="54%" color="#E67E22" size={28} />
-          <Pin left="40%" top="66%" color="#F4D03F" size={24} />
-          <Pin left="70%" top="28%" color="#2ECC71" size={24} />
-          <Pin left="73%" top="64%" color="#E74C3C" size={24} />
           <div className="absolute bottom-3 left-3 rounded-full bg-surface-card/90 px-3 py-1.5 text-[12px] font-bold shadow-card">
             📍 <span className="tnum">{stats.openCount}</span> {dict.landing.mapOpen}
           </div>
@@ -218,27 +213,6 @@ export function LandingScreen({ stats }: { stats: LandingStats }) {
       <footer className="px-6 pb-6 text-center text-[11px] text-muted">
         Drosia · drosia.eu · Datenschutz · Impressum · AGB
       </footer>
-    </div>
-  );
-}
-
-function Pin({ left, top, color, size }: { left: string; top: string; color: string; size: number }) {
-  return (
-    <div className="absolute -translate-x-1/2 -translate-y-full drop-shadow" style={{ left, top }}>
-      <DrosiaMark style={{ height: size, width: "auto", color }} />
-    </div>
-  );
-}
-
-function Cluster({ left, top, n }: { left: string; top: string; n: number }) {
-  return (
-    <div className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
-      <div
-        className="tnum grid h-[38px] w-[38px] place-items-center rounded-full border-[3px] border-white font-display text-[14px] font-black text-white shadow-card"
-        style={{ background: "var(--sev-stale)" }}
-      >
-        {n}
-      </div>
     </div>
   );
 }

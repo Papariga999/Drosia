@@ -1,7 +1,7 @@
 /**
  * Lightweight geo helpers.
- * AUTHORITATIVE geofence = PostGIS ST_Covers(country.boundary, point) at submit time (Phase 1).
- * The bounding box here is only a cheap pre-filter / test aid — NOT the geofence itself.
+ * Country and authority matching live in PostGIS. The bounding-box helper is a
+ * generic utility for pre-filtering or tests, not a submit gate.
  */
 export interface BBox {
   minLng: number;

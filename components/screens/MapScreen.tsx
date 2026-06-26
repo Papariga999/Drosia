@@ -1,33 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import type { Map as LeafletMapInstance } from "leaflet";
+import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { useLocale } from "@/components/LocaleProvider";
 import { categoryLabel, CATEGORY_META } from "@/lib/categories";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
-import type { CircleMarker, Layer, Map as LeafletMap, Marker } from "leaflet";
 
 type View = "pins" | "heat";
 
-const DEFAULT_CENTER: [number, number] = [
-  publicNumber(process.env.NEXT_PUBLIC_DEFAULT_MAP_LAT, 36.3461),
-  publicNumber(process.env.NEXT_PUBLIC_DEFAULT_MAP_LNG, 28.1233),
-];
-const DEFAULT_ZOOM = publicNumber(process.env.NEXT_PUBLIC_DEFAULT_MAP_ZOOM, 11);
-const TILE_URL =
-  process.env.NEXT_PUBLIC_MAP_TILE_URL?.trim() ||
-  "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_ATTRIBUTION =
-  process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION?.trim() ||
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-
 export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   const { dict } = useLocale();
-  const mapElementRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<LeafletMap | null>(null);
-  const overlaysRef = useRef<Layer[]>([]);
+  const mapRef = useRef<LeafletMapInstance | null>(null);
   const [view, setView] = useState<View>("pins");
   const [sheet, setSheet] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
@@ -41,75 +28,9 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
     mappedReports.find((report) => report.public_token === selectedToken) ?? mappedReports[0];
   const hasReports = mappedReports.length > 0;
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function drawMap() {
-      if (!mapElementRef.current) return;
-
-      const L = await import("leaflet");
-      if (cancelled || !mapElementRef.current) return;
-
-      if (!mapRef.current) {
-        const map = L.map(mapElementRef.current, {
-          attributionControl: true,
-          zoomControl: false,
-        }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-
-        L.control.zoom({ position: "bottomleft" }).addTo(map);
-        L.tileLayer(TILE_URL, {
-          attribution: TILE_ATTRIBUTION,
-          maxZoom: 19,
-          detectRetina: true,
-        }).addTo(map);
-
-        mapRef.current = map;
-      }
-
-      const map = mapRef.current;
-      overlaysRef.current.forEach((layer) => layer.remove());
-      overlaysRef.current = [];
-
-      if (mappedReports.length === 0) {
-        map.setView(DEFAULT_CENTER, DEFAULT_ZOOM, { animate: false });
-        map.invalidateSize();
-        return;
-      }
-
-      if (view === "heat") {
-        overlaysRef.current = mappedReports.map((report) => addHeatCircle(L, map, report));
-      } else {
-        overlaysRef.current = mappedReports.map((report) =>
-          addReportMarker(L, map, report, () => {
-            setSelectedToken(report.public_token);
-            setSheet(true);
-          }),
-        );
-      }
-
-      const bounds = L.latLngBounds(mappedReports.map((report): [number, number] => [report.lat, report.lng]));
-      if (bounds.isValid()) {
-        map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 13 });
-      }
-      map.invalidateSize();
-    }
-
-    drawMap().catch((error) => {
-      console.error("[MapScreen] Leaflet render failed:", error);
-    });
-
-    return () => {
-      cancelled = true;
-      overlaysRef.current.forEach((layer) => layer.remove());
-      overlaysRef.current = [];
-    };
-  }, [mappedReports, view]);
-
-  useEffect(() => {
-    return () => {
-      mapRef.current?.remove();
-      mapRef.current = null;
-    };
+  const openReport = useCallback((report: PublicReport) => {
+    setSelectedToken(report.public_token);
+    setSheet(true);
   }, []);
 
   function locateUser() {
@@ -145,11 +66,16 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
       </div>
 
       <div className="relative flex-1">
-        <div
-          ref={mapElementRef}
-          className="absolute inset-0 z-0 bg-[#cfe3e6]"
-          role="application"
-          aria-label={dict.bottomNav.map}
+        <DrosiaMap
+          reports={mappedReports}
+          mode={view}
+          selectedToken={selectedToken}
+          onReportSelect={openReport}
+          onMapReady={(map) => {
+            mapRef.current = map;
+          }}
+          className="absolute inset-0 z-0"
+          ariaLabel={dict.bottomNav.map}
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[450] px-4 pb-3 pt-12" style={{ background: "linear-gradient(var(--surface),transparent)" }}>
@@ -245,53 +171,6 @@ function ReportPreview({ report }: { report: PublicReport }) {
       </Link>
     </>
   );
-}
-
-function addReportMarker(
-  L: typeof import("leaflet"),
-  map: LeafletMap,
-  report: PublicReport,
-  onClick: () => void,
-): Marker {
-  const days = reportAgeDays(report);
-  const color = report.status === "resolved" ? "var(--success)" : severityColor(days);
-  const marker = L.marker([report.lat, report.lng], {
-    icon: L.divIcon({
-      className: "drosia-leaflet-marker",
-      html: `<span class="drosia-map-pin" style="--pin-color:${color}"><span class="drosia-map-pin__count">${days}</span></span>`,
-      iconSize: [46, 54],
-      iconAnchor: [23, 50],
-    }),
-    keyboard: true,
-    title: String(days),
-  });
-
-  marker.on("click keypress", onClick);
-  marker.addTo(map);
-  return marker;
-}
-
-function addHeatCircle(L: typeof import("leaflet"), map: LeafletMap, report: PublicReport): CircleMarker {
-  const days = reportAgeDays(report);
-  const color = report.status === "resolved" ? "var(--success)" : severityColor(days);
-  const radius = Math.min(34, 14 + Math.max(report.vote_count, report.confirm_count));
-  const circle = L.circleMarker([report.lat, report.lng], {
-    radius,
-    color,
-    weight: 1,
-    opacity: 0.45,
-    fillColor: color,
-    fillOpacity: 0.28,
-  });
-
-  circle.addTo(map);
-  return circle;
-}
-
-function publicNumber(value: string | undefined, fallback: number): number {
-  if (typeof value !== "string" || value.trim() === "") return fallback;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function Chip({ active, children }: { active?: boolean; children: React.ReactNode }) {

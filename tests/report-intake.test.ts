@@ -46,6 +46,11 @@ describe("report field validation", () => {
     expect(reportFieldsSchema.safeParse({ ...base, lat: "200" }).success).toBe(false);
   });
 
+  it("accepts valid worldwide coordinates", () => {
+    expect(reportFieldsSchema.safeParse({ ...base, lat: "52.52", lng: "13.405" }).success).toBe(true);
+    expect(reportFieldsSchema.safeParse({ ...base, lat: "-33.8688", lng: "151.2093" }).success).toBe(true);
+  });
+
   it("defaults locale to en when omitted", () => {
     const r = reportFieldsSchema.safeParse({ ...base, locale: undefined });
     expect(r.success).toBe(true);

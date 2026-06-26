@@ -96,7 +96,7 @@
     "lng": "Längengrad",
     "submitting": "Wird gesendet…",
     "errGeneric": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
-    "errBounds": "Drosia deckt aktuell nur Griechenland ab.",
+    "errBounds": "Dieser Standort ist noch nicht freigeschaltet.",
     "errRate": "Zu viele Meldungen. Bitte später erneut versuchen.",
     "errBackend": "Das Backend ist noch nicht konfiguriert."
   },

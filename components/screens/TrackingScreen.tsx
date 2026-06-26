@@ -6,7 +6,7 @@ import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
 import { VoteBar } from "@/components/ui/VoteBar";
 import { PhotoPlaceholder } from "@/components/ui/Photo";
-import { DrosiaMark } from "@/components/brand/Logo";
+import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { useLocale } from "@/components/LocaleProvider";
 import { fill } from "@/lib/i18n";
 import { categoryLabel, CATEGORY_META } from "@/lib/categories";
@@ -190,19 +190,17 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
 
       {/* Mini-map */}
       <div className="relative mx-4 mt-5 h-[118px] overflow-hidden rounded-[18px] border border-line-strong">
-        <div
-          aria-hidden
+        <DrosiaMap
+          points={[{ lat: report.lat, lng: report.lng, color: pin, title: catLabel }]}
+          center={[report.lat, report.lng]}
+          zoom={15}
+          fitToMarkers={false}
+          interactive={false}
+          showAttribution={false}
+          showZoomControl={false}
           className="absolute inset-0"
-          style={{
-            background: "linear-gradient(135deg,#dce8e6,#cadbd9)",
-            backgroundImage:
-              "linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px),linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px)",
-            backgroundSize: "34px 34px",
-          }}
+          ariaLabel={dict.tracking.miniMap}
         />
-        <div className="absolute left-1/2 top-[34%] -translate-x-1/2">
-          <DrosiaMark className="h-8 w-auto" style={{ color: pin }} />
-        </div>
         <span className="absolute bottom-2 right-3 rounded-full bg-surface-card/90 px-2 py-1 text-[10px] font-semibold text-slate">
           {dict.tracking.miniMap}
         </span>

@@ -10,10 +10,10 @@ import { reportFieldsSchema, validatePhotos, MAX_PHOTOS } from "@/lib/report-int
  * POST /api/report — login-free report submission (Phase 1 core loop).
  *
  *   validate → compress (sharp) → upload originals (private bucket) →
- *   intake_report RPC (geofence ST_Covers + authority routing ST_Contains, atomic)
+ *   intake_report RPC (country detection + authority routing ST_Contains, atomic)
  *
- * Atomicity: if the RPC rejects the point (OUT_OF_BOUNDS) the just-uploaded blobs
- * are deleted, so nothing is orphaned. Anonymization is kicked off best-effort;
+ * Atomicity: if the RPC rejects the insert, the just-uploaded blobs are deleted,
+ * so nothing is orphaned. Anonymization is kicked off best-effort;
  * the report stays non-public until blur_status='done' (Phase 2 anonymizer).
  */
 export const runtime = "nodejs";
@@ -118,7 +118,7 @@ export async function POST(req: Request): Promise<Response> {
       await storage.remove(uploaded); // atomic cleanup — never orphan blobs
       if (rpcError.message.includes("OUT_OF_BOUNDS")) {
         return NextResponse.json(
-          { error: "out_of_bounds", message: "Drosia currently only covers Greece." },
+          { error: "out_of_bounds", message: "This location is not enabled yet." },
           { status: 422 },
         );
       }

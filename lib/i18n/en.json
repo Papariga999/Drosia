@@ -96,7 +96,7 @@
     "lng": "Longitude",
     "submitting": "Sending…",
     "errGeneric": "Something went wrong. Please try again.",
-    "errBounds": "Drosia currently only covers Greece.",
+    "errBounds": "This location is not enabled yet.",
     "errRate": "Too many reports. Please try again later.",
     "errBackend": "The backend isn't configured yet."
   },
