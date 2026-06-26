@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { LOCALES, type Locale } from "./i18n";
 import { isReportCategory } from "./categories";
+import { anonymizedPhotoUrl } from "./storage";
 import type { PublicReport } from "./mock";
 import { MOCK_REPORTS } from "./mock";
 
@@ -30,12 +31,6 @@ function publicClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
     { auth: { persistSession: false } },
   );
-}
-
-/** Public URL for an anonymized photo in the public storage bucket. */
-function publicPhotoUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  return `${base}/storage/v1/object/public/report-public/${path}`;
 }
 
 const REPORT_COLUMNS =
@@ -111,7 +106,7 @@ export async function getPublicReport(token: string): Promise<PublicReport | nul
       .eq("report_id", data.id)
       .limit(1)
       .maybeSingle<{ public_path: string }>();
-    if (photo?.public_path) report.photo_url = publicPhotoUrl(photo.public_path);
+    if (photo?.public_path) report.photo_url = anonymizedPhotoUrl(photo.public_path);
 
     return report;
   } catch (e) {
@@ -194,7 +189,7 @@ export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
         const report = mapRow(row);
         if (report) {
           const path = photoByReport.get(row.id);
-          if (path) report.photo_url = publicPhotoUrl(path);
+          if (path) report.photo_url = anonymizedPhotoUrl(path);
         }
         return report;
       })

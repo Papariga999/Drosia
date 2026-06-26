@@ -75,6 +75,31 @@ function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
+/**
+ * Report preview thumbnail. Renders the ANONYMIZED (public) photo when available;
+ * falls back to the hatch placeholder while a report still awaits blur, or if the
+ * image fails to load. Originals are never shown here (service-role only).
+ */
+function AdminPhoto({ src, className, badge }: { src: string | null; className: string; badge?: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  const show = !!src && !failed;
+  return (
+    <div className={`photo-placeholder relative overflow-hidden ${className}`}>
+      {show && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src ?? undefined}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      )}
+      {badge}
+    </div>
+  );
+}
+
 export function AdminBoard() {
   const [authed, setAuthed] = useState(false);
   const [screen, setScreen] = useState<Screen>("queue");
@@ -489,7 +514,7 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
                 className="grid w-full items-center border-b border-[#EEF4F4] text-left hover:bg-[#F4F8F9]"
                 style={{ gridTemplateColumns: cols, background: pending ? "#FFFDF7" : "#fff" }}
               >
-                <div className="px-3.5 py-2"><div className="photo-placeholder h-9 w-9 rounded-lg" /></div>
+                <div className="px-3.5 py-2"><AdminPhoto src={r.photo_url} className="h-9 w-9 rounded-lg" /></div>
                 <div className="truncate px-3.5 py-2.5 font-mono text-[11px] font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[12px]" style={{ color: authority ? "#0B2B30" : "#C0392B" }}>{authority ?? "⚠ unrouted"}</div>
@@ -561,9 +586,20 @@ function DetailView({
       </div>
       <div className="grid gap-4" style={{ gridTemplateColumns: "1.1fr 1fr" }}>
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
-          <div className="photo-placeholder relative h-[300px] rounded-[10px]">
-            <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">🔒 Anonymized (public)</div>
-          </div>
+          <AdminPhoto
+            src={report.photo_url}
+            className="h-[300px] rounded-[10px]"
+            badge={
+              report.photo_url ? (
+                <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">🔒 Anonymized (public)</div>
+              ) : (
+                <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">⏳ Awaiting anonymization</div>
+              )
+            }
+          />
+          {report.photo_count > 1 && (
+            <div className="mt-2 text-[11px] text-[#9DB1B5]">+ {report.photo_count - 1} more photo{report.photo_count - 1 === 1 ? "" : "s"} on this report</div>
+          )}
           <div className="mt-3 flex items-center gap-2.5">
             <span className="text-[11px] text-[#9DB1B5]">Original is service-role only (signed-URL view: next)</span>
             <span className="ml-auto rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: blurDone ? "#EAFBF1" : "#FFF4DC", color: blurDone ? "#1B8B4A" : "#B7820E" }}>

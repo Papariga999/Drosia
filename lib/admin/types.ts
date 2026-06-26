@@ -73,4 +73,6 @@ export interface AdminReportRow {
   delivery_channel: string | null;
   photo_count: number;
   blur_done_count: number;
+  /** Anonymized (public) preview URL of the first photo; null until blur is done. */
+  photo_url: string | null;
 }
