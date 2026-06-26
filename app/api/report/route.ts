@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
-import { reportFieldsSchema, validatePhotos, MAX_PHOTOS } from "@/lib/report-intake";
+import { reportFieldsSchema, validatePhotos, MAX_PHOTOS, type ReportFields } from "@/lib/report-intake";
 
 /**
  * POST /api/report — login-free report submission (Phase 1 core loop).
@@ -12,8 +12,10 @@ import { reportFieldsSchema, validatePhotos, MAX_PHOTOS } from "@/lib/report-int
  *   validate → compress (sharp) → upload originals (private bucket) →
  *   intake_report RPC (country detection + authority routing ST_Contains, atomic)
  *
- * Atomicity: if the RPC rejects the insert, the just-uploaded blobs are deleted,
- * so nothing is orphaned. Anonymization is kicked off best-effort;
+ * Temporary worldwide testing: older live DBs may still throw OUT_OF_BOUNDS; in
+ * that case we insert an unrouted review item with country/authority null.
+ * Atomicity: if every insert path fails, the just-uploaded blobs are deleted.
+ * Anonymization is kicked off best-effort;
  * the report stays non-public until blur_status='done' (Phase 2 anonymizer).
  */
 export const runtime = "nodejs";
@@ -112,18 +114,18 @@ export async function POST(req: Request): Promise<Response> {
       p_author_token: fields.authorToken,
       p_photo_paths: uploaded,
     } as never;
-    const { data: token, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
+    const { data: rpcToken, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
 
+    let token = rpcToken as string | null;
     if (rpcError) {
-      await storage.remove(uploaded); // atomic cleanup — never orphan blobs
       if (rpcError.message.includes("OUT_OF_BOUNDS")) {
-        return NextResponse.json(
-          { error: "out_of_bounds", message: "This location is not enabled yet." },
-          { status: 422 },
-        );
+        token = await insertUnroutedReport(fields, uploaded);
+      } else {
+        await storage.remove(uploaded); // atomic cleanup — never orphan blobs
+        throw new Error(rpcError.message);
       }
-      throw new Error(rpcError.message);
     }
+    if (!token) throw new Error("intake_report did not return a token");
 
     // Anonymize + persist (best-effort). The report stays non-public until every
     // photo is blur_status='done' AND it is approved in moderation.
@@ -131,7 +133,7 @@ export async function POST(req: Request): Promise<Response> {
       const { data: row } = await admin
         .from("reports")
         .select("id")
-        .eq("public_token", token as string)
+        .eq("public_token", token)
         .maybeSingle<{ id: string }>();
       if (row?.id) await anonymizeReportPhotos(row.id);
     } catch (e) {
@@ -144,4 +146,37 @@ export async function POST(req: Request): Promise<Response> {
     console.error("[/api/report] submit failed:", err);
     return NextResponse.json({ error: "Submission failed. Please try again." }, { status: 500 });
   }
+}
+
+async function insertUnroutedReport(fields: ReportFields, photoPaths: string[]): Promise<string> {
+  const admin = getSupabaseAdmin();
+  const point = `SRID=4326;POINT(${fields.lng} ${fields.lat})`;
+
+  const { data: report, error: reportError } = await admin
+    .from("reports")
+    .insert({
+      country_code: null,
+      authority_id: null,
+      category: fields.category,
+      description: fields.description || null,
+      geom: point,
+      locale: fields.locale,
+      author_token: fields.authorToken || null,
+      status: "submitted",
+    } as never)
+    .select("id, public_token")
+    .single<{ id: string; public_token: string }>();
+
+  if (reportError || !report) {
+    throw new Error(reportError?.message ?? "fallback insert failed");
+  }
+
+  const photoRows = photoPaths.map((path) => ({ report_id: report.id, original_path: path }));
+  const { error: photosError } = await admin.from("report_photos").insert(photoRows as never);
+  if (photosError) {
+    await admin.from("reports").delete().eq("id", report.id);
+    throw new Error(photosError.message);
+  }
+
+  return report.public_token;
 }
