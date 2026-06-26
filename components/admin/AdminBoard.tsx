@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DrosiaMark } from "@/components/brand/Logo";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
-import { CATEGORY_META, isReportCategory } from "@/lib/categories";
+import { CATEGORY_META, REPORT_CATEGORIES, isReportCategory } from "@/lib/categories";
 import { reportAgeDays } from "@/lib/severity";
 import type {
   AdminAuthorityRow,
@@ -46,9 +46,33 @@ const STATUS_PILL: Record<string, [string, string]> = {
 };
 const pill = (s: string) => STATUS_PILL[s] ?? ["#F0F4F5", "#5B7378"];
 
+/** Report lifecycle states (report_status enum) → operator-facing label + colors. */
+const REPORT_STATUS_META: Record<string, { label: string; bg: string; fg: string; dot: string; order: number }> = {
+  submitted: { label: "Pending", bg: "#FFF4DC", fg: "#B7820E", dot: "#E6A817", order: 0 },
+  in_review: { label: "In review", bg: "#E0F7FA", fg: "#00A6BC", dot: "#1ECAD9", order: 1 },
+  notified: { label: "Notified", bg: "#E7F0FF", fg: "#2D6BD8", dot: "#3D7BF0", order: 2 },
+  resolved: { label: "Resolved", bg: "#EAFBF1", fg: "#1B8B4A", dot: "#2ECC71", order: 3 },
+  rejected: { label: "Rejected", bg: "#FDECEA", fg: "#C0392B", dot: "#E74C3C", order: 4 },
+};
+const statusMeta = (s: string) => REPORT_STATUS_META[s] ?? { label: s, bg: "#F0F4F5", fg: "#5B7378", dot: "#9DB1B5", order: 9 };
+
+function StatusBadge({ status }: { status: string }) {
+  const m = statusMeta(status);
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: m.bg, color: m.fg }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: m.dot }} />
+      {m.label}
+    </span>
+  );
+}
+
 function catDisplay(cat: string): string {
   if (isReportCategory(cat)) return `${CATEGORY_META[cat].emoji} ${CATEGORY_META[cat].label.en}`;
   return cat;
+}
+
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
 export function AdminBoard() {
@@ -67,10 +91,11 @@ export function AdminBoard() {
     setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const fetchQueue = useCallback(async () => {
+  const fetchReports = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/reports?status=submitted", { cache: "no-store" });
+      // No status filter — the overview board shows every report and filters client-side.
+      const res = await fetch("/api/admin/reports", { cache: "no-store" });
       if (res.status === 401) {
         setAuthed(false);
         return;
@@ -78,17 +103,17 @@ export function AdminBoard() {
       const data = (await res.json()) as { reports?: AdminReportRow[] };
       setReports(data.reports ?? []);
     } catch {
-      flash("Failed to load queue");
+      flash("Failed to load reports");
     } finally {
       setLoading(false);
     }
   }, [flash]);
 
   useEffect(() => {
-    // Load the queue from the server on sign-in (external-system sync, not derived state).
+    // Load reports from the server on sign-in (external-system sync, not derived state).
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (authed) void fetchQueue();
-  }, [authed, fetchQueue]);
+    if (authed) void fetchReports();
+  }, [authed, fetchReports]);
 
   async function approve(row: AdminReportRow) {
     setBusy(true);
@@ -110,7 +135,7 @@ export function AdminBoard() {
       }
       setScreen("queue");
       setSelected(null);
-      await fetchQueue();
+      await fetchReports();
     } catch {
       flash("Approve failed — network error");
     } finally {
@@ -130,7 +155,7 @@ export function AdminBoard() {
       flash(res.ok ? "Report rejected" : data.error ?? "Reject failed");
       setScreen("queue");
       setSelected(null);
-      await fetchQueue();
+      await fetchReports();
     } catch {
       flash("Reject failed — network error");
     } finally {
@@ -140,15 +165,16 @@ export function AdminBoard() {
 
   if (!authed) return <SignIn onSignIn={() => setAuthed(true)} />;
 
+  const pendingCount = reports.filter((r) => r.status === "submitted").length;
   const titles: Record<Screen, string> = {
-    queue: "Moderation Queue",
+    queue: "Reports Overview",
     detail: "Report Moderation Detail",
     authorities: "Authority Directory",
     delivery: "Delivery & Bounce Monitor",
     flags: "Flags & Disputes",
   };
   const nav: { key: Screen; icon: string; label: string; count?: number }[] = [
-    { key: "queue", icon: "📥", label: "Moderation Queue", count: reports.length },
+    { key: "queue", icon: "📋", label: "Reports", count: pendingCount },
     { key: "authorities", icon: "🏛", label: "Authority Directory" },
     { key: "delivery", icon: "📡", label: "Delivery & Bounce" },
     { key: "flags", icon: "⚐", label: "Flags & Disputes" },
@@ -201,14 +227,14 @@ export function AdminBoard() {
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-[60px] flex-none items-center gap-4 border-b border-[#E3EDEE] bg-white px-6">
           <div className="font-display text-[18px] font-black">{titles[screen]}</div>
-          <button onClick={fetchQueue} className="ml-auto rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]">
+          <button onClick={fetchReports} className="ml-auto rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]">
             ↻ Refresh
           </button>
         </div>
 
         <div className="flex-1 overflow-auto p-6">
           {screen === "queue" && (
-            <QueueView
+            <ReportsBoard
               reports={reports}
               loading={loading}
               onOpen={(r) => { setSelected(r); setScreen("detail"); }}
@@ -304,43 +330,204 @@ function Pill({ status }: { status: string }) {
   );
 }
 
-/* ---------- A2 Queue (real data) ---------- */
-function QueueView({ reports, loading, onOpen }: { reports: AdminReportRow[]; loading: boolean; onOpen: (r: AdminReportRow) => void }) {
-  const cols = "70px 1.4fr 1.6fr 1.4fr 80px 110px";
-  if (loading) return <div className="text-[13px] text-[#9DB1B5]">Loading…</div>;
-  if (!reports.length) return <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports awaiting moderation.</div>;
+/* ---------- A2 Reports overview (start page) ---------- */
+type StatusFilter = "all" | "submitted" | "in_review" | "notified" | "resolved" | "rejected";
+type SortKey = "date" | "category" | "status" | "age";
+type SortDir = "asc" | "desc";
+
+const TIME_WINDOWS: { key: string; label: string; ms: number | null }[] = [
+  { key: "all", label: "All time", ms: null },
+  { key: "24h", label: "Last 24 hours", ms: 86_400_000 },
+  { key: "7d", label: "Last 7 days", ms: 7 * 86_400_000 },
+  { key: "30d", label: "Last 30 days", ms: 30 * 86_400_000 },
+];
+
+/** Lower-bound timestamp for a time-window key (null = no bound). Kept module-scope so the clock read stays out of render. */
+function windowCutoff(windowKey: string): number | null {
+  const ms = TIME_WINDOWS.find((w) => w.key === windowKey)?.ms ?? null;
+  return ms == null ? null : Date.now() - ms;
+}
+
+const KPI_CARDS: { key: StatusFilter; label: string; color: string }[] = [
+  { key: "all", label: "Total", color: "#0B2B30" },
+  { key: "submitted", label: "Pending", color: "#B7820E" },
+  { key: "in_review", label: "In review", color: "#00A6BC" },
+  { key: "notified", label: "Notified", color: "#2D6BD8" },
+  { key: "resolved", label: "Resolved", color: "#1B8B4A" },
+  { key: "rejected", label: "Rejected", color: "#C0392B" },
+];
+
+function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[]; loading: boolean; onOpen: (r: AdminReportRow) => void }) {
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [category, setCategory] = useState<string>("all");
+  const [windowKey, setWindowKey] = useState<string>("all");
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: reports.length, submitted: 0, in_review: 0, notified: 0, resolved: 0, rejected: 0 };
+    for (const r of reports) if (r.status in c) c[r.status] = (c[r.status] ?? 0) + 1;
+    return c;
+  }, [reports]);
+
+  const rows = useMemo(() => {
+    const cutoff = windowCutoff(windowKey);
+    const q = query.trim().toLowerCase();
+    const filtered = reports.filter((r) => {
+      if (status !== "all" && r.status !== status) return false;
+      if (category !== "all" && r.category !== category) return false;
+      if (cutoff && new Date(r.created_at).getTime() < cutoff) return false;
+      if (q) {
+        const auth = (r.authority_name?.en ?? r.authority_name?.el ?? "").toLowerCase();
+        const hay = `${r.public_token} ${r.description ?? ""} ${auth} ${catDisplay(r.category)}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    const dir = sortDir === "asc" ? 1 : -1;
+    return filtered.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "date") cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      else if (sortKey === "age") cmp = reportAgeDays(a) - reportAgeDays(b);
+      else if (sortKey === "category") cmp = catDisplay(a.category).localeCompare(catDisplay(b.category));
+      else cmp = (statusMeta(a.status).order - statusMeta(b.status).order);
+      return cmp * dir;
+    });
+  }, [reports, status, category, windowKey, query, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir(key === "category" || key === "status" ? "asc" : "desc");
+    }
+  }
+
+  const hasFilters = status !== "all" || category !== "all" || windowKey !== "all" || query.trim() !== "";
+  function clearFilters() {
+    setStatus("all");
+    setCategory("all");
+    setWindowKey("all");
+    setQuery("");
+  }
+
+  const cols = "52px 88px 1.4fr 1.4fr 116px 60px 86px";
+
   return (
     <div>
-      <div className="mb-3.5 flex items-center gap-2">
-        <span className="rounded-[9px] bg-[#0B2B30] px-3 py-2 text-[12px] font-bold text-white">Status: submitted</span>
-        <span className="tnum ml-auto text-[12px] text-[#9DB1B5]">{reports.length} awaiting moderation</span>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-[#E3EDEE] bg-white">
-        <div className="grid border-b border-[#E3EDEE] bg-[#F7FBFC]" style={{ gridTemplateColumns: cols }}>
-          <Th>Photo</Th><Th>Category</Th><Th>Auto authority</Th><Th>Location</Th><Th>Age</Th><Th>Blur</Th>
-        </div>
-        {reports.map((r) => {
-          const age = reportAgeDays(r);
-          const ageColor = age >= 60 ? "#E74C3C" : age >= 7 ? "#E67E22" : "#1B8B4A";
-          const blurDone = r.photo_count > 0 && r.blur_done_count >= r.photo_count;
-          const authority = r.authority_name?.en ?? r.authority_name?.el;
+      {/* KPI summary — each card is a one-click status filter */}
+      <div className="mb-4 grid grid-cols-6 gap-3">
+        {KPI_CARDS.map((k) => {
+          const active = status === k.key;
           return (
-            <button key={r.id} onClick={() => onOpen(r)} className="grid w-full items-center border-b border-[#EEF4F4] text-left hover:bg-[#F4F8F9]" style={{ gridTemplateColumns: cols }}>
-              <div className="px-3.5 py-2"><div className="photo-placeholder h-10 w-10 rounded-lg" /></div>
-              <div className="px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
-              <div className="px-3.5 py-2.5 text-[13px]" style={{ color: authority ? "#0B2B30" : "#C0392B" }}>{authority ?? "⚠ unrouted"}</div>
-              <div className="tnum px-3.5 py-2.5 text-[12px] text-[#5B7378]">{r.lat.toFixed(3)}, {r.lng.toFixed(3)}</div>
-              <div className="tnum px-3.5 py-2.5 font-display text-[13px] font-extrabold" style={{ color: ageColor }}>{age}d</div>
-              <div className="px-3.5 py-2.5">
-                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: blurDone ? "#EAFBF1" : "#FFF4DC", color: blurDone ? "#1B8B4A" : "#B7820E" }}>
-                  {blurDone ? "done" : `${r.blur_done_count}/${r.photo_count}`}
-                </span>
-              </div>
+            <button
+              key={k.key}
+              onClick={() => setStatus(k.key)}
+              className="rounded-xl border bg-white p-3.5 text-left transition-shadow hover:shadow-card"
+              style={{ borderColor: active ? k.color : "#E3EDEE", boxShadow: active ? `inset 0 0 0 1px ${k.color}` : undefined }}
+            >
+              <div className="tnum font-display text-[24px] font-black" style={{ color: k.color }}>{counts[k.key] ?? 0}</div>
+              <div className="text-[12px] text-[#5B7378]">{k.label}</div>
             </button>
           );
         })}
       </div>
+
+      {/* Toolbar — search + faceted filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-[#9DB1B5]">🔍</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search token, description, authority…"
+            className="w-[280px] rounded-[9px] border border-[#E3EDEE] bg-white py-2 pl-8 pr-3 text-[13px] outline-none focus:border-primary"
+          />
+        </div>
+        <FilterSelect value={category} onChange={setCategory} options={[
+          { value: "all", label: "All types" },
+          ...REPORT_CATEGORIES.map((c) => ({ value: c, label: catDisplay(c) })),
+        ]} />
+        <FilterSelect value={windowKey} onChange={setWindowKey} options={TIME_WINDOWS.map((w) => ({ value: w.key, label: w.label }))} />
+        {hasFilters && (
+          <button onClick={clearFilters} className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[12px] font-bold text-[#5B7378] hover:text-[#C0392B]">
+            ✕ Clear filters
+          </button>
+        )}
+        <span className="tnum ml-auto text-[12px] text-[#9DB1B5]">
+          {rows.length} of {reports.length} report{reports.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {loading ? (
+        <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
+      ) : !reports.length ? (
+        <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports yet.</div>
+      ) : !rows.length ? (
+        <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports match the current filters.</div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-[#E3EDEE] bg-white">
+          <div className="grid border-b border-[#E3EDEE] bg-[#F7FBFC]" style={{ gridTemplateColumns: cols }}>
+            <Th>Photo</Th>
+            <Th>Token</Th>
+            <SortHeader label="Type" col="category" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+            <Th>Authority</Th>
+            <SortHeader label="Status" col="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+            <SortHeader label="Age" col="age" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+            <SortHeader label="Date" col="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+          </div>
+          {rows.map((r) => {
+            const age = reportAgeDays(r);
+            const ageColor = age >= 60 ? "#E74C3C" : age >= 7 ? "#E67E22" : "#1B8B4A";
+            const authority = r.authority_name?.en ?? r.authority_name?.el;
+            const pending = r.status === "submitted";
+            return (
+              <button
+                key={r.id}
+                onClick={() => onOpen(r)}
+                className="grid w-full items-center border-b border-[#EEF4F4] text-left hover:bg-[#F4F8F9]"
+                style={{ gridTemplateColumns: cols, background: pending ? "#FFFDF7" : "#fff" }}
+              >
+                <div className="px-3.5 py-2"><div className="photo-placeholder h-9 w-9 rounded-lg" /></div>
+                <div className="truncate px-3.5 py-2.5 font-mono text-[11px] font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</div>
+                <div className="truncate px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
+                <div className="truncate px-3.5 py-2.5 text-[12px]" style={{ color: authority ? "#0B2B30" : "#C0392B" }}>{authority ?? "⚠ unrouted"}</div>
+                <div className="px-3.5 py-2.5"><StatusBadge status={r.status} /></div>
+                <div className="tnum px-3.5 py-2.5 font-display text-[13px] font-extrabold" style={{ color: ageColor }}>{age}d</div>
+                <div className="tnum px-3.5 py-2.5 text-[11px] text-[#5B7378]">{shortDate(r.created_at)}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
+  );
+}
+
+function SortHeader({ label, col, sortKey, sortDir, onSort }: { label: string; col: SortKey; sortKey: SortKey; sortDir: SortDir; onSort: (k: SortKey) => void }) {
+  const active = sortKey === col;
+  return (
+    <button
+      onClick={() => onSort(col)}
+      className="flex items-center gap-1 px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-wide hover:text-[#0B2B30]"
+      style={{ color: active ? "#0B2B30" : "#9DB1B5" }}
+    >
+      {label}
+      <span className="text-[8px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+    </button>
+  );
+}
+
+function FilterSelect({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px] font-bold text-[#3F5F64] outline-none focus:border-primary"
+    >
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
   );
 }
 
@@ -361,9 +548,17 @@ function DetailView({
   const [reason, setReason] = useState("private_person");
   const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
   const authority = report.authority_name?.en ?? report.authority_name?.el;
+  const isPending = report.status === "submitted";
   return (
     <div>
-      <button onClick={onBack} className="mb-3.5 text-[13px] font-bold text-[#00A6BC]">‹ Back to queue</button>
+      <div className="mb-3.5 flex items-center gap-3">
+        <button onClick={onBack} className="text-[13px] font-bold text-[#00A6BC]">‹ Back to reports</button>
+        <StatusBadge status={report.status} />
+        <span className="tnum ml-auto text-[11px] text-[#9DB1B5]">
+          Created {shortDate(report.created_at)}
+          {report.notified_at ? ` · Notified ${shortDate(report.notified_at)}` : ""}
+        </span>
+      </div>
       <div className="grid gap-4" style={{ gridTemplateColumns: "1.1fr 1fr" }}>
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
           <div className="photo-placeholder relative h-[300px] rounded-[10px]">
@@ -417,33 +612,49 @@ function DetailView({
               <div className="text-[13px] font-bold text-[#C0392B]">⚠ No authority matched — out of any coverage polygon.</div>
             )}
           </Card>
-          <div className="flex gap-2.5">
-            <button
-              onClick={onApprove}
-              disabled={busy || !blurDone}
-              title={blurDone ? "" : "Awaiting anonymization"}
-              className="flex-1 rounded-[11px] bg-success py-3 font-display text-[14px] font-extrabold text-white shadow-[0_6px_14px_rgba(46,204,113,0.3)] disabled:opacity-50"
-            >
-              {busy ? "Working…" : "✓ Approve & send"}
-            </button>
-          </div>
-          <Card>
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Reject</div>
-            <div className="flex gap-2.5">
-              <select value={reason} onChange={(e) => setReason(e.target.value)} className="flex-1 rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px]">
-                <option value="private_person">Shows private person/property</option>
-                <option value="spam_invalid">Spam / invalid</option>
-                <option value="out_of_scope">Out of scope</option>
-              </select>
-              <button
-                onClick={() => onReject(reason)}
-                disabled={busy}
-                className="rounded-[11px] border border-[#E74C3C] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#C0392B] disabled:opacity-50"
-              >
-                Reject
-              </button>
-            </div>
-          </Card>
+          {isPending ? (
+            <>
+              <div className="flex gap-2.5">
+                <button
+                  onClick={onApprove}
+                  disabled={busy || !blurDone}
+                  title={blurDone ? "" : "Awaiting anonymization"}
+                  className="flex-1 rounded-[11px] bg-success py-3 font-display text-[14px] font-extrabold text-white shadow-[0_6px_14px_rgba(46,204,113,0.3)] disabled:opacity-50"
+                >
+                  {busy ? "Working…" : "✓ Approve & send"}
+                </button>
+              </div>
+              <Card>
+                <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Reject</div>
+                <div className="flex gap-2.5">
+                  <select value={reason} onChange={(e) => setReason(e.target.value)} className="flex-1 rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px]">
+                    <option value="private_person">Shows private person/property</option>
+                    <option value="spam_invalid">Spam / invalid</option>
+                    <option value="out_of_scope">Out of scope</option>
+                  </select>
+                  <button
+                    onClick={() => onReject(reason)}
+                    disabled={busy}
+                    className="rounded-[11px] border border-[#E74C3C] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#C0392B] disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </Card>
+            </>
+          ) : (
+            <Card>
+              <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">
+                Status
+                <StatusBadge status={report.status} />
+              </div>
+              <p className="text-[12px] leading-relaxed text-[#5B7378]">
+                {report.status === "rejected"
+                  ? "This report was rejected and is not public. No further moderation action is needed."
+                  : "This report has already been moderated and published. Use Flags & Disputes for takedown or ranking exclusion."}
+              </p>
+            </Card>
+          )}
         </div>
       </div>
     </div>
