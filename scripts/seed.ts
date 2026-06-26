@@ -4,9 +4,32 @@
  * Real GR authorities (the 332 δήμοι) are seeded via a separate real-data import and
  * must NOT be is_test. Never run against production.
  */
+import { existsSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
+/**
+ * Load .env.local into process.env (tsx doesn't auto-load env files). Skips
+ * comments and strips trailing inline comments; never overrides an existing var.
+ */
+function loadEnvLocal(file = ".env.local"): void {
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!m) continue;
+    let val = m[2].trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    } else {
+      const c = val.indexOf(" #");
+      if (c >= 0) val = val.slice(0, c).trim();
+    }
+    if (process.env[m[1]] === undefined) process.env[m[1]] = val;
+  }
+}
+
 async function main(): Promise<void> {
+  loadEnvLocal();
+
   if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
     console.error("Refusing to seed: production environment detected.");
     process.exit(1);
