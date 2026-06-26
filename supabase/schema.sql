@@ -551,30 +551,24 @@ revoke all on function admin_list_disputes() from public;
 revoke all on function admin_list_disputes() from anon, authenticated;
 
 -- ── Storage buckets (originals private, public anonymized) ──────────────────
--- (Supabase) Create buckets if missing. Storage object policies are managed
--- separately in the Supabase dashboard / a storage policy migration.
-insert into storage.buckets (id, name, public)
-  values ('report-originals', 'report-originals', false)
-  on conflict (id) do nothing;
-insert into storage.buckets (id, name, public)
-  values ('report-public', 'report-public', true)
-  on conflict (id) do nothing;
-
-do $$ begin
-  if exists (
-    select 1 from information_schema.tables
-    where table_schema = 'storage' and table_name = 'objects'
-  ) then
-    alter table storage.objects enable row level security;
-
-    if not exists (
-      select 1
-      from pg_policies
-      where schemaname = 'storage'
-        and tablename = 'objects'
-        and policyname = 'Public can read anonymized report photos'
-    ) then
-      execute 'create policy "Public can read anonymized report photos" on storage.objects for select to anon, authenticated using (bucket_id = ''report-public'')';
-    end if;
-  end if;
+-- We only create the buckets. We deliberately do NOT touch storage.objects:
+--   • on Supabase it is owned by supabase_storage_admin (ALTER/CREATE POLICY
+--     there raises "must be owner of table objects"), and RLS is already on;
+--   • a PUBLIC bucket ('report-public') is served publicly by the Storage API
+--     with no extra policy needed;
+--   • the PRIVATE bucket ('report-originals') is only ever read via the service
+--     role (anonymization), which bypasses RLS — so no policy is required.
+-- Wrapped so a least-privileged role degrades to a NOTICE instead of failing;
+-- in that case create the two buckets from the Supabase dashboard.
+do $$
+begin
+  insert into storage.buckets (id, name, public)
+    values ('report-originals', 'report-originals', false)
+    on conflict (id) do nothing;
+  insert into storage.buckets (id, name, public)
+    values ('report-public', 'report-public', true)
+    on conflict (id) do nothing;
+exception
+  when insufficient_privilege then
+    raise notice 'Skipped storage bucket creation (insufficient privilege). Create buckets "report-originals" (private) and "report-public" (public) in the Supabase dashboard.';
 end $$;
