@@ -31,6 +31,7 @@ interface DrosiaMapProps {
   selectedToken?: string | null;
   onReportSelect?: (report: PublicReport) => void;
   onMapReady?: (map: LeafletMapInstance) => void;
+  onMapClick?: (latlng: { lat: number; lng: number }) => void;
 }
 
 const DEFAULT_CENTER: [number, number] = [
@@ -60,15 +61,21 @@ export function DrosiaMap({
   selectedToken,
   onReportSelect,
   onMapReady,
+  onMapClick,
 }: DrosiaMapProps) {
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMapInstance | null>(null);
   const overlaysRef = useRef<Layer[]>([]);
   const onMapReadyRef = useRef(onMapReady);
+  const onMapClickRef = useRef(onMapClick);
 
   useEffect(() => {
     onMapReadyRef.current = onMapReady;
   }, [onMapReady]);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   const mappedReports = useMemo(
     () => reports.filter((report) => isValidLatLng(report.lat, report.lng)),
@@ -114,6 +121,10 @@ export function DrosiaMap({
           maxZoom: 19,
           detectRetina: true,
         }).addTo(map);
+
+        map.on("click", (e) => {
+          onMapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+        });
 
         mapRef.current = map;
         onMapReadyRef.current?.(map);

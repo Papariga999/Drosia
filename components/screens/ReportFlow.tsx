@@ -152,7 +152,7 @@ export function ReportFlow() {
       {/* Flow header */}
       <div className="flex items-center gap-3 px-5 pt-4">
         <button
-          onClick={() => step > 1 && setStep((s) => (s - 1) as Step)}
+          onClick={() => (step > 1 ? setStep((s) => (s - 1) as Step) : router.push("/"))}
           className="grid h-9 w-9 place-items-center rounded-xl border border-line bg-surface-card text-slate"
           aria-label={dict.common.back}
         >
@@ -242,14 +242,18 @@ export function ReportFlow() {
                 }
                 center={coords ? [coords.lat, coords.lng] : undefined}
                 zoom={coords ? 15 : undefined}
-                fitToMarkers={!!coords}
-                interactive={false}
+                fitToMarkers={false}
+                interactive
                 showAttribution={false}
-                showZoomControl={false}
+                showZoomControl
+                onMapClick={(p) => {
+                  setLocSource("manual");
+                  setCoords({ lat: p.lat, lng: p.lng });
+                }}
                 className="absolute inset-0"
                 ariaLabel={dict.flow.s2Title}
               />
-              <div className="absolute bottom-3 left-3 rounded-lg bg-surface-card/90 px-2.5 py-1.5 text-[11px] font-semibold text-slate">
+              <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-surface-card/90 px-2.5 py-1.5 text-[11px] font-semibold text-slate">
                 {coords ? (
                   <span className="tnum">
                     📌 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
@@ -268,25 +272,7 @@ export function ReportFlow() {
               🎯 {locating ? dict.flow.locating : dict.flow.useLocation}
             </button>
 
-            <div className="mt-3 text-[12px] font-bold text-muted">{dict.flow.manualHint}</div>
-            <div className="mt-1.5 flex gap-2.5">
-              <CoordInput
-                label={dict.flow.lat}
-                value={coords?.lat}
-                onChange={(v) => {
-                  setLocSource("manual");
-                  setCoords((c) => ({ lat: v, lng: c?.lng ?? 0 }));
-                }}
-              />
-              <CoordInput
-                label={dict.flow.lng}
-                value={coords?.lng}
-                onChange={(v) => {
-                  setLocSource("manual");
-                  setCoords((c) => ({ lat: c?.lat ?? 0, lng: v }));
-                }}
-              />
-            </div>
+            <div className="mt-3 text-center text-[12px] font-bold text-muted">{dict.flow.tapHint}</div>
           </div>
         )}
 
@@ -405,43 +391,8 @@ function StepTitle({ title, sub }: { title: string; sub: string }) {
   );
 }
 
-function CoordInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value?: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <label className="flex-1">
-      <span className="mb-1 block text-[11px] font-bold text-muted">{label}</span>
-      <input
-        type="number"
-        step="any"
-        inputMode="decimal"
-        defaultValue={value ?? ""}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value);
-          if (Number.isFinite(v)) onChange(v);
-        }}
-        className="tnum w-full rounded-[12px] border-[1.5px] border-line-strong bg-surface-card p-2.5 text-[14px] outline-none focus:border-primary"
-      />
-    </label>
-  );
-}
-
 function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: () => void; onMap: () => void }) {
   const { dict } = useLocale();
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    const url = `${typeof window !== "undefined" ? window.location.origin : "https://drosia.eu"}/r/${token}`;
-    navigator.clipboard?.writeText(url).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  }
 
   return (
     <div className="px-5 pb-8 pt-5 text-center">
@@ -453,20 +404,9 @@ function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: ()
       <h1 className="mt-3.5 font-display text-[24px] font-black tracking-display">{dict.success.title}</h1>
       <p className="mt-1.5 text-[14px] text-slate">{dict.success.sub}</p>
 
-      <div className="mt-4 flex items-center gap-2 rounded-[14px] border border-line bg-surface px-3.5 py-2.5">
-        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-left text-[13px] font-bold text-slate">
-          /r/{token}
-        </span>
-        <button
-          onClick={copy}
-          className="rounded-[9px] border border-primary bg-surface-card px-3 py-1.5 font-display text-[12px] font-extrabold text-primary-ink"
-        >
-          {copied ? dict.common.copied : dict.success.copy}
-        </button>
-      </div>
       <a
         href={`/r/${token}`}
-        className="mt-2.5 block rounded-[14px] bg-ink py-3 text-center font-display text-[14px] font-extrabold text-white"
+        className="mt-4 block rounded-[14px] bg-ink py-3 text-center font-display text-[14px] font-extrabold text-white"
       >
         {dict.success.track} ›
       </a>
