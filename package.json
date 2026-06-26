@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
-    "seed:authorities": "tsx scripts/import-gr-authorities.ts"
+    "seed:authorities": "tsx scripts/import-gr-authorities.ts",
+    "seed:boundaries": "tsx scripts/import-gr-boundaries.ts"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",

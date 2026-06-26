@@ -389,6 +389,25 @@ $$;
 revoke all on function set_authority_geom(uuid, text) from public;
 revoke all on function set_authority_geom(uuid, text) from anon, authenticated;
 
+-- Helper: set an authority coverage polygon from a GeoJSON geometry. Used by the
+-- bulk OSM boundary import. Repairs self-intersections from simplification
+-- (ST_MakeValid), keeps polygonal parts only, and coerces to MultiPolygon before
+-- the geography cast so every row stores a uniform, valid coverage shape.
+create or replace function set_authority_geom_geojson(p_id uuid, p_geojson text)
+returns void
+language sql
+as $$
+  update authorities
+  set geom = st_multi(
+               st_collectionextract(
+                 st_makevalid(st_setsrid(st_geomfromgeojson(p_geojson), 4326)),
+                 3)            -- 3 = keep polygons only
+             )::geography
+  where id = p_id;
+$$;
+revoke all on function set_authority_geom_geojson(uuid, text) from public;
+revoke all on function set_authority_geom_geojson(uuid, text) from anon, authenticated;
+
 -- ── Admin moderation queue read (service-role only) ─────────────────────────
 -- Exposes lat/lng (decoded from geom) + authority + blur progress for the
 -- operator board, WITHOUT leaking geom WKB or author_token to anything but the
