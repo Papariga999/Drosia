@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "seed:authorities": "tsx scripts/import-gr-authorities.ts"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",
