@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-vscode.vscode-typescript-next",
+    "vitest.explorer",
+    "supabase.supabase-vscode",
+    "mikestead.dotenv",
+    "yoavbls.pretty-ts-errors",
+    "formulahendry.auto-rename-tag"
+  ]
+}

@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Drosia — "Morning Freshness" design tokens.
+ * Light is the default; dark inverts surfaces/text/borders only — brand,
+ * severity and mint stay constant (aqua brightens for contrast).
+ * Source: design handoff "Design System" + "Dark Mode".
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Type families (loaded via Google Fonts in the root layout) */
+  --font-display: "Nunito", system-ui, sans-serif;
+  --font-sans: "Mulish", system-ui, sans-serif;
+
+  /* Brand — constant across themes */
+  --primary: #00b4c8;
+  --primary-ink: #00a6bc;
+  --success: #2ecc71;
+  --accent: #ffc247;
+
+  /* Severity scale — the heart. Never change breakpoints. */
+  --sev-fresh: #2ecc71; /* < 7 days  */
+  --sev-mild: #f4d03f; /*  < 30 days */
+  --sev-warn: #e67e22; /*  < 60 days */
+  --sev-stale: #e74c3c; /* > 60 days */
+
+  /* Surfaces & text — Light */
+  --surface: #f7fbfc;
+  --surface-card: #ffffff;
+  --surface-raised: #ffffff;
+  --ink: #0b2b30;
+  --slate: #5b7378;
+  --muted: #9db1b5;
+  --border: #e8f0f0;
+  --border-strong: #e3edee;
+  --tint: #e0f3f5; /* aqua chip / info block */
+  --tint-soft: #f0fafb;
+
+  /* Effects */
+  --radius-card: 18px;
+  --radius-btn: 14px;
+  --shadow-card: 0 2px 14px rgba(11, 43, 48, 0.06);
+  --shadow-float: 0 18px 50px rgba(11, 43, 48, 0.16);
+  --shadow-btn: 0 6px 16px rgba(0, 180, 200, 0.3);
+}
+
+.dark {
+  --primary: #1ecad9; /* aqua brightens on dark */
+  --primary-ink: #1ecad9;
+  --surface: #04181d;
+  --surface-card: #07232a;
+  --surface-raised: #0b2b30;
+  --ink: #eaf4f5;
+  --slate: #9fc4c9;
+  --muted: #6e8a90;
+  --border: #173b43;
+  --border-strong: #173b43;
+  --tint: #0b2b30;
+  --tint-soft: #0b2b30;
+  --shadow-card: 0 2px 14px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+/* Follow the OS when the user hasn't chosen a theme manually. */
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --primary: #1ecad9;
+    --primary-ink: #1ecad9;
+    --surface: #04181d;
+    --surface-card: #07232a;
+    --surface-raised: #0b2b30;
+    --ink: #eaf4f5;
+    --slate: #9fc4c9;
+    --muted: #6e8a90;
+    --border: #173b43;
+    --border-strong: #173b43;
+    --tint: #0b2b30;
+    --tint-soft: #0b2b30;
+    --shadow-card: 0 2px 14px rgba(0, 0, 0, 0.4);
+    --shadow-float: 0 18px 50px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--primary);
+  color: #fff;
+}
+
+/* All figures are tabular by default — numbers are the emotional centre. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The diagonal-hatch + pixelation placeholder standing in for the
+   anonymized photo / blur pipeline (mirrors the .dc.html mocks). */
+.photo-placeholder {
+  background-color: #cfe3e6;
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgba(11, 43, 48, 0.08) 0,
+      rgba(11, 43, 48, 0.08) 2px,
+      transparent 2px,
+      transparent 9px
+    ),
+    linear-gradient(135deg, #d7e8ea 0%, #c2dadd 100%);
+}
+.dark .photo-placeholder {
+  background-color: #0e2c33;
+  background-image: repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.05) 0,
+      rgba(255, 255, 255, 0.05) 2px,
+      transparent 2px,
+      transparent 9px
+    ),
+    linear-gradient(135deg, #0e3038 0%, #0a262d 100%);
+}
+
+@keyframes drosia-shimmer {
+  0% {
+    background-position: -460px 0;
+  }
+  100% {
+    background-position: 460px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--border) 25%,
+    var(--surface-card) 37%,
+    var(--border) 63%
+  );
+  background-size: 920px 100%;
+  animation: drosia-shimmer 1.4s infinite linear;
+  border-radius: 10px;
+}
