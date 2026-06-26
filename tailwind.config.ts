@@ -35,7 +35,15 @@ const config: Config = {
           card: "var(--surface-card)",
           raised: "var(--surface-raised)",
         },
-        ink: "var(--ink)",
+        ink: {
+          DEFAULT: "var(--ink)",
+          // Text colour for `bg-ink` surfaces; flips with the theme so a
+          // dark-mode `bg-ink` (which becomes near-white) gets dark text.
+          contrast: "var(--ink-contrast)",
+          // Constant deep teal that does NOT invert — for scrims/overlays and
+          // hero stat blocks that must stay dark in both light and dark mode.
+          fixed: "#0b2b30",
+        },
         slate: "var(--slate)",
         muted: "var(--muted)",
         line: "var(--border)",

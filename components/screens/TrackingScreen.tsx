@@ -117,7 +117,7 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
         pixel={!resolved}
         src={report.photo_url}
       >
-        <div className="absolute left-4 top-4 rounded-full bg-ink/80 px-3 py-1.5 text-[12px] font-bold text-white">
+        <div className="absolute left-4 top-4 rounded-full bg-ink-fixed/80 px-3 py-1.5 text-[12px] font-bold text-white">
           {cat.emoji} {catLabel}
         </div>
         {resolved ? (
@@ -130,7 +130,7 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
             </span>
           </div>
         ) : (
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/60 to-transparent p-3 text-[11px] font-semibold text-white">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-fixed/60 to-transparent p-3 text-[11px] font-semibold text-white">
             🔒 {fill(dict.tracking.photoAlt, { category: catLabel })}
           </div>
         )}
@@ -154,7 +154,7 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
 
       {/* Share + secondary actions */}
       <div className="px-4 pt-5">
-        <button className="w-full rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-white">
+        <button className="w-full rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast">
           📣 {dict.tracking.shareTitle}
         </button>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -252,7 +252,7 @@ function FlagDialog({ token, onClose }: { token: string; onClose: () => void }) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-fixed/40 sm:items-center" onClick={onClose}>
       <div className="w-full max-w-[420px] rounded-t-3xl bg-surface-card p-5 shadow-float sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-display text-[16px] font-black">⚐ {dict.tracking.flagTitle}</h3>
         {sent ? (
@@ -278,7 +278,7 @@ function FlagDialog({ token, onClose }: { token: string; onClose: () => void }) 
               <button
                 onClick={submit}
                 disabled={!reason.trim() || busy}
-                className="flex-1 rounded-btn bg-ink px-3 py-3 font-display text-[13px] font-extrabold text-white disabled:opacity-50"
+                className="flex-1 rounded-btn bg-ink px-3 py-3 font-display text-[13px] font-extrabold text-ink-contrast disabled:opacity-50"
               >
                 {busy ? dict.tracking.flagSending : dict.tracking.flagSubmit}
               </button>

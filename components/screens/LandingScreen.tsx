@@ -87,7 +87,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
       </div>
 
       {/* SHOCKSTAT */}
-      <div className="mx-4 mb-5 rounded-[22px] bg-ink p-6 text-center text-white">
+      <div className="mx-4 mb-5 rounded-[22px] bg-ink-fixed p-6 text-center text-white">
         <div className="text-[13px] font-semibold text-[#8FB0B4]">{dict.landing.shockPre}</div>
         <div className="tnum my-1 font-display text-[56px] font-black leading-none text-accent">
           {shock.toLocaleString("de-DE")}
@@ -203,7 +203,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
               </div>
             ))}
           </div>
-          <button className="mt-4 w-full rounded-[14px] bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-white">
+          <button className="mt-4 w-full rounded-[14px] bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast">
             {dict.landing.partnerCta}
           </button>
           <div className="mt-2.5 text-center text-[11px] text-muted">{dict.landing.partnerNote}</div>

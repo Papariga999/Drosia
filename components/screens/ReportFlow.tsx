@@ -206,7 +206,7 @@ export function ReportFlow() {
                   <button
                     onClick={() => setFiles((f) => f.filter((_, idx) => idx !== i))}
                     aria-label="Remove photo"
-                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/80 text-[12px] text-white"
+                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-fixed/80 text-[12px] text-white"
                   >
                     ✕
                   </button>
@@ -406,7 +406,7 @@ function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: ()
 
       <a
         href={`/r/${token}`}
-        className="mt-4 block rounded-[14px] bg-ink py-3 text-center font-display text-[14px] font-extrabold text-white"
+        className="mt-4 block rounded-[14px] bg-ink py-3 text-center font-display text-[14px] font-extrabold text-ink-contrast"
       >
         {dict.success.track} ›
       </a>

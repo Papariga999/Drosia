@@ -32,6 +32,7 @@
   --surface-card: #ffffff;
   --surface-raised: #ffffff;
   --ink: #0b2b30;
+  --ink-contrast: #ffffff; /* text that sits on bg-ink (flips with --ink) */
   --slate: #5b7378;
   --muted: #9db1b5;
   --border: #e8f0f0;
@@ -54,6 +55,7 @@
   --surface-card: #07232a;
   --surface-raised: #0b2b30;
   --ink: #eaf4f5;
+  --ink-contrast: #04181d; /* dark text on the now-light bg-ink */
   --slate: #9fc4c9;
   --muted: #6e8a90;
   --border: #173b43;
@@ -73,6 +75,7 @@
     --surface-card: #07232a;
     --surface-raised: #0b2b30;
     --ink: #eaf4f5;
+    --ink-contrast: #04181d;
     --slate: #9fc4c9;
     --muted: #6e8a90;
     --border: #173b43;

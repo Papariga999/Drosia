@@ -57,7 +57,7 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
               setSheet(false);
             }}
             className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${
-              view === mode ? "bg-ink text-white" : "text-slate"
+              view === mode ? "bg-ink text-ink-contrast" : "text-slate"
             }`}
           >
             {mode === "pins" ? dict.map.pins : dict.map.heatmap}
@@ -120,7 +120,7 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
 
         {sheet && selectedReport && hasReports && (
           <>
-            <div className="absolute inset-0 z-[460] bg-ink/20" onClick={() => setSheet(false)} />
+            <div className="absolute inset-0 z-[460] bg-ink-fixed/20" onClick={() => setSheet(false)} />
             <div className="absolute inset-x-0 bottom-0 z-[470] rounded-t-3xl bg-surface-card px-4 pb-5 pt-2.5 shadow-float">
               <div className="mx-auto mb-3.5 h-1 w-10 rounded-full bg-line-strong" />
               <ReportPreview report={selectedReport} />
@@ -165,7 +165,7 @@ function ReportPreview({ report }: { report: PublicReport }) {
       </div>
       <Link
         href={`/r/${report.public_token}`}
-        className="mt-3.5 block w-full rounded-[14px] bg-ink py-3 text-center font-display text-[15px] font-extrabold text-white"
+        className="mt-3.5 block w-full rounded-[14px] bg-ink py-3 text-center font-display text-[15px] font-extrabold text-ink-contrast"
       >
         {dict.map.details} &gt;
       </Link>
