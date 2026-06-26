@@ -15,7 +15,8 @@ function loadEnvLocal(file = ".env.local"): void {
   if (!existsSync(file)) return;
   for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (!m) continue;
+    const key = m?.[1];
+    if (!key || m?.[2] === undefined) continue;
     let val = m[2].trim();
     if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
@@ -23,7 +24,7 @@ function loadEnvLocal(file = ".env.local"): void {
       const c = val.indexOf(" #");
       if (c >= 0) val = val.slice(0, c).trim();
     }
-    if (process.env[m[1]] === undefined) process.env[m[1]] = val;
+    if (process.env[key] === undefined) process.env[key] = val;
   }
 }
 

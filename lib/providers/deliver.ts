@@ -83,7 +83,10 @@ class EmailDeliverer implements ReportDeliverer {
 
     const url = reportUrl(input.reportToken);
     const { subject, text } = emailBody(input.locale, input.category, url);
-    const apiKey = process.env.RESEND_API_KEY;
+    // Only a real Resend key (re_…) triggers a live send; empty/placeholder/invalid
+    // values fall back to dev-mode so a forgotten placeholder can't break delivery.
+    const rawKey = process.env.RESEND_API_KEY;
+    const apiKey = rawKey && rawKey.startsWith("re_") ? rawKey : null;
     const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
 
     if (!apiKey) {
