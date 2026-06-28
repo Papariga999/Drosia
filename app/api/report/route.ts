@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
@@ -152,18 +153,23 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
 
-    // Anonymize + persist (best-effort). The report stays non-public until every
-    // photo is blur_status='done' AND it is approved in moderation.
-    try {
-      const { data: row } = await admin
-        .from("reports")
-        .select("id")
-        .eq("public_token", token)
-        .maybeSingle<{ id: string }>();
-      if (row?.id) await anonymizeReportPhotos(row.id);
-    } catch (e) {
-      console.warn("[/api/report] anonymization deferred:", e);
-    }
+    // Anonymize off the hot path: after() runs once the response is flushed, so a
+    // slow blur on 3 large photos can't time out the submit. The report stays
+    // non-public until every photo is blur_status='done' AND approved in
+    // moderation; approval also re-runs anonymization, so this is a head start.
+    const reportToken = token;
+    after(async () => {
+      try {
+        const { data: row } = await admin
+          .from("reports")
+          .select("id")
+          .eq("public_token", reportToken)
+          .maybeSingle<{ id: string }>();
+        if (row?.id) await anonymizeReportPhotos(row.id);
+      } catch (e) {
+        console.warn("[/api/report] background anonymization failed:", e);
+      }
+    });
 
     return NextResponse.json({ token, status: "submitted" }, { status: 201 });
   } catch (err) {

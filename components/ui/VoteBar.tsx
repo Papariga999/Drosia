@@ -1,19 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { getDeviceToken } from "@/lib/device-token";
 
 /**
- * 👍 "Important" + 🔴 "Still here" buttons. Optimistic increment with a
- * 240ms scale-bounce; real impl dedupes per device token. Social-proof
- * line below reflects the priority votes.
+ * 👍 "Important" + 🔴 "Still here" buttons. Optimistic increment, then POST to
+ * /api/vote with the anonymous device token (server dedupes per device per type
+ * via a UNIQUE constraint). On failure we revert; on success we sync to the
+ * server's authoritative counts. Social-proof line reflects priority votes.
  */
 export function VoteBar({
+  token,
   initialVotes,
   initialConfirms,
   importantLabel,
   stillHereLabel,
   socialProof,
 }: {
+  token?: string;
   initialVotes: number;
   initialConfirms: number;
   importantLabel: string;
@@ -24,6 +28,43 @@ export function VoteBar({
   const [confirms, setConfirms] = useState(initialConfirms);
   const [voted, setVoted] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function cast(type: "priority" | "still_here") {
+    if (busy || !token) return;
+    setBusy(true);
+    const isPriority = type === "priority";
+    // Optimistic.
+    if (isPriority) {
+      setVotes((v) => v + 1);
+      setVoted(true);
+    } else {
+      setConfirms((c) => c + 1);
+      setConfirmed(true);
+    }
+    try {
+      const res = await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, type, voterToken: getDeviceToken() }),
+      });
+      if (!res.ok) throw new Error("vote failed");
+      const data = (await res.json()) as { vote_count?: number; confirm_count?: number };
+      if (typeof data.vote_count === "number") setVotes(data.vote_count);
+      if (typeof data.confirm_count === "number") setConfirms(data.confirm_count);
+    } catch {
+      // Revert the optimistic bump.
+      if (isPriority) {
+        setVotes((v) => Math.max(0, v - 1));
+        setVoted(false);
+      } else {
+        setConfirms((c) => Math.max(0, c - 1));
+        setConfirmed(false);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div>
@@ -31,10 +72,10 @@ export function VoteBar({
         <button
           onClick={() => {
             if (voted) return;
-            setVotes((v) => v + 1);
-            setVoted(true);
+            void cast("priority");
           }}
-          className="flex-1 rounded-2xl border-2 border-primary bg-tint px-3 py-3.5 text-center transition-transform active:scale-95"
+          disabled={voted || busy}
+          className="flex-1 rounded-2xl border-2 border-primary bg-tint px-3 py-3.5 text-center transition-transform active:scale-95 disabled:opacity-70"
         >
           <div className="text-2xl leading-none">👍</div>
           <div className="tnum mt-1 font-display text-[28px] font-black text-primary-ink">
@@ -45,10 +86,10 @@ export function VoteBar({
         <button
           onClick={() => {
             if (confirmed) return;
-            setConfirms((c) => c + 1);
-            setConfirmed(true);
+            void cast("still_here");
           }}
-          className="flex-1 rounded-2xl border-2 px-3 py-3.5 text-center transition-transform active:scale-95"
+          disabled={confirmed || busy}
+          className="flex-1 rounded-2xl border-2 px-3 py-3.5 text-center transition-transform active:scale-95 disabled:opacity-70"
           style={{ borderColor: "var(--sev-stale)", backgroundColor: "#FDECEA" }}
         >
           <div className="text-2xl leading-none">🔴</div>

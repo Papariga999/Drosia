@@ -7,6 +7,14 @@ export const runtime = "nodejs";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CHANNELS = ["email", "open311", "none"];
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A non-empty email_official must be a valid address (worthless deliveries otherwise). */
+function emailError(body: { email_official?: string | null }): string | null {
+  const email = body.email_official?.trim();
+  if (email && !EMAIL.test(email)) return "Invalid email address.";
+  return null;
+}
 
 /** GET /api/admin/authorities — directory with pending counts + delivery health. */
 export async function GET(): Promise<Response> {
@@ -63,6 +71,8 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "A name (en or el) is required." }, { status: 400 });
   }
   if (!body.country_code) return NextResponse.json({ error: "country_code is required." }, { status: 400 });
+  const emailErr = emailError(body);
+  if (emailErr) return NextResponse.json({ error: emailErr }, { status: 400 });
 
   const admin = getSupabaseAdmin();
   const payload = { level: "municipality", delivery_channel: "email", is_active: true, ...buildPayload(body) };
@@ -92,6 +102,8 @@ export async function PATCH(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
   if (!body.id || !UUID.test(body.id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  const emailErr = emailError(body);
+  if (emailErr) return NextResponse.json({ error: emailErr }, { status: 400 });
 
   const admin = getSupabaseAdmin();
   const payload = buildPayload(body);

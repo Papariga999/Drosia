@@ -139,6 +139,7 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
       {/* Engagement */}
       <div className="mx-4 mt-4 rounded-[20px] border border-line p-4">
         <VoteBar
+          token={report.public_token}
           initialVotes={report.vote_count}
           initialConfirms={report.confirm_count}
           importantLabel={dict.tracking.important}
