@@ -37,6 +37,17 @@ async function hmacHex(key: string, message: string): Promise<string> {
     .join("");
 }
 
+async function passwordFingerprint(): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(process.env.ADMIN_PASSWORD ?? ""),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+}
+
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -48,10 +59,13 @@ async function hasValidSession(value: string | undefined): Promise<boolean> {
   if (!value) return false;
   const key = secret();
   if (!key) return false;
-  const [issued, mac] = value.split(".");
-  if (!issued || !mac) return false;
-  const expected = await hmacHex(key, issued);
+  const parts = value.split(".");
+  if (parts.length !== 3) return false;
+  const [issued, fp, mac] = parts;
+  if (!issued || !fp || !mac) return false;
+  const expected = await hmacHex(key, `${issued}.${fp}`);
   if (!constantTimeEqual(mac, expected)) return false;
+  if (!constantTimeEqual(fp, await passwordFingerprint())) return false; // password rotated → revoked
   const ageMs = Date.now() - Number(issued);
   return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < MAX_AGE_MS;
 }

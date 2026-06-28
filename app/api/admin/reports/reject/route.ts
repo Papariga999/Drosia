@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifySession } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { purgePublicPhotos } from "@/lib/admin/takedown";
 
 export const runtime = "nodejs";
 
@@ -31,5 +32,8 @@ export async function POST(req: Request): Promise<Response> {
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Remove any already-published anonymized photo from the public bucket.
+  await purgePublicPhotos(id);
   return NextResponse.json({ status: "rejected" });
 }
