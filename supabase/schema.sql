@@ -298,9 +298,8 @@ grant select on v_authority_scorecard   to anon, authenticated;
 -- ── Intake RPC: geofence + authority routing + insert, atomic ───────────────
 -- Called SERVER-SIDE ONLY (service role) from the rate-limited /api/report route,
 -- AFTER originals have been uploaded to the private bucket. One transaction:
---   • Geofence: temporarily relaxed for cross-country testing. If the point
---     falls inside an ACTIVE country boundary, country_code is set from data.
---     If not, country_code stays null and the report is held for admin review.
+--   • Geofence: STRICT. The point must fall inside an ACTIVE country boundary,
+--     otherwise the function raises OUT_OF_BOUNDS and nothing is inserted.
 --   • Authority routing: smallest covering polygon wins (most specific); no
 --     match → authority_id stays null and the report is flagged for admin review.
 -- Photos start blur_status='pending'; the report is NOT public until anonymized.
@@ -333,6 +332,13 @@ begin
     and boundary is not null
     and st_covers(boundary, v_point)
   limit 1;
+
+  -- STRICT geofence: a point outside every active country is rejected. The
+  -- caller (rate-limited /api/report) maps OUT_OF_BOUNDS to HTTP 422 and may opt
+  -- into a relaxed testing fallback. Never silently accept out-of-bounds reports.
+  if v_country is null then
+    raise exception 'OUT_OF_BOUNDS' using errcode = 'P0001';
+  end if;
 
   select id into v_authority
   from authorities
@@ -564,6 +570,54 @@ as $$
 $$;
 revoke all on function admin_list_disputes() from public;
 revoke all on function admin_list_disputes() from anon, authenticated;
+
+-- ── Durable rate limiting (cross-instance) ─────────────────────────────────
+-- The app's in-memory limiter is per-serverless-instance and resets on cold
+-- start, so it cannot protect the admin login from brute force. This fixed-window
+-- counter is shared across all instances. Called SERVER-SIDE ONLY (service role).
+create table if not exists rate_limits (
+  bucket_key   text not null,
+  window_start timestamptz not null,
+  count        integer not null default 0,
+  primary key (bucket_key, window_start)
+);
+create index if not exists idx_rate_limits_window on rate_limits (window_start);
+alter table rate_limits enable row level security;  -- service-role only (no policies)
+
+create or replace function rate_limit_hit(p_key text, p_limit integer, p_window_ms bigint)
+returns table (allowed boolean, retry_after_seconds integer)
+language plpgsql
+as $$
+declare
+  v_secs         double precision := p_window_ms / 1000.0;
+  v_window_start timestamptz;
+  v_window_end   timestamptz;
+  v_count        integer;
+begin
+  v_window_start := to_timestamp(floor(extract(epoch from clock_timestamp()) / v_secs) * v_secs);
+  v_window_end   := v_window_start + make_interval(secs => v_secs);
+
+  insert into rate_limits (bucket_key, window_start, count)
+    values (p_key, v_window_start, 1)
+  on conflict (bucket_key, window_start)
+    do update set count = rate_limits.count + 1
+  returning count into v_count;
+
+  -- Opportunistic cleanup of stale windows (keeps the table tiny without a cron).
+  if random() < 0.01 then
+    delete from rate_limits where window_start < clock_timestamp() - interval '1 day';
+  end if;
+
+  if v_count > p_limit then
+    return query select false,
+      greatest(1, ceil(extract(epoch from (v_window_end - clock_timestamp())))::integer);
+  else
+    return query select true, 0;
+  end if;
+end;
+$$;
+revoke all on function rate_limit_hit(text, integer, bigint) from public;
+revoke all on function rate_limit_hit(text, integer, bigint) from anon, authenticated;
 
 -- ── Storage buckets (originals private, public anonymized) ──────────────────
 -- We only create the buckets. We deliberately do NOT touch storage.objects:

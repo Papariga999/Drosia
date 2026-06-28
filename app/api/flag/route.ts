@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const ip = clientIp(req.headers);
-  const limit = rateLimit(`flag:${ip}`, 8, 10 * 60 * 1000);
+  const limit = await rateLimitDurable(`flag:${ip}`, 8, 10 * 60 * 1000);
   if (!limit.ok) return NextResponse.json({ error: "Too many reports." }, { status: 429 });
 
   let body: { token?: string; reason?: string; contact?: string; website?: string };

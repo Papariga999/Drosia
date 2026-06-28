@@ -11,7 +11,16 @@ export const ADMIN_COOKIE = "drosia_admin";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function secret(): string {
-  return process.env.ADMIN_SESSION_SECRET || process.env.WEBHOOK_SECRET || "dev-insecure-secret";
+  const configured = process.env.ADMIN_SESSION_SECRET || process.env.WEBHOOK_SECRET;
+  if (configured) return configured;
+  // NEVER fall back to a hardcoded secret in production: a known secret means
+  // anyone can forge a valid admin cookie (issued.HMAC(issued)) → full takeover.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "ADMIN_SESSION_SECRET (or WEBHOOK_SECRET) must be set in production — refusing an insecure default.",
+    );
+  }
+  return "dev-insecure-secret";
 }
 
 function sign(payload: string): string {
