@@ -698,6 +698,24 @@ function DetailView({
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notify, setNotify] = useState(true);
+  const [stats, setStats] = useState<{ views: number; priority: number; still_here: number } | null>(null);
+
+  useEffect(() => {
+    // Per-report engagement (views from web_events, votes from report_votes).
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/report-stats?token=${report.public_token}`, { cache: "no-store" });
+        const data = (await res.json()) as { stats?: { views: number; priority: number; still_here: number } | null };
+        if (alive) setStats(data.stats ?? null);
+      } catch {
+        /* engagement is best-effort */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [report.public_token]);
   const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
   const authority = report.authority_name?.en ?? report.authority_name?.el;
   const isPending = report.status === "submitted";
@@ -766,6 +784,13 @@ function DetailView({
             </div>
             <div className="mt-2 font-display text-[15px] font-extrabold">{catDisplay(report.category)}</div>
             {report.description && <p className="mt-2 text-[13px] leading-relaxed text-[#3F5F64]">“{report.description}”</p>}
+            {stats && (
+              <div className="mt-3 flex gap-4 border-t border-[#EEF4F4] pt-2.5 text-[12px] font-bold text-[#5B7378]">
+                <span title="Public page views of /r/<token>">👁 {stats.views} views</span>
+                <span title="Priority votes">👍 {stats.priority}</span>
+                <span title="Still-here votes">🔴 {stats.still_here}</span>
+              </div>
+            )}
           </Card>
           <Card>
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Auto-matched authority · ST_Contains</div>
@@ -1872,6 +1897,7 @@ function AnalyticsKpi({ value, label, color, delta }: { value: number | string; 
 }
 
 function AnalyticsView({ flash }: { flash: (m: string) => void }) {
+  const [mode, setMode] = useState<"traffic" | "reports">("traffic");
   const [data, setData] = useState<WebAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsMigration, setNeedsMigration] = useState(false);
@@ -1914,6 +1940,14 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
 
   return (
     <div>
+      <div className="mb-4 flex gap-2">
+        <TabBtn active={mode === "traffic"} onClick={() => setMode("traffic")}>🌐 Website traffic</TabBtn>
+        <TabBtn active={mode === "reports"} onClick={() => setMode("reports")}>🏛 Civic outcomes</TabBtn>
+      </div>
+      {mode === "reports" ? (
+        <ReportInsights flash={flash} />
+      ) : (
+        <>
       <div className="mb-3.5 flex flex-wrap items-center gap-2">
         {[7, 30, 90].map((d) => (
           <button
@@ -1978,6 +2012,191 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
             <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" />
           </div>
         </>
+      )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Operational (civic-outcome) reporting ---------- */
+interface ReportAnalytics {
+  days: number;
+  totals: { reports: number; by_status: Record<string, number> };
+  by_category: { label: string; count: number; resolved: number }[];
+  by_authority: { label: string; count: number; resolved: number }[];
+  resolution: { median_notify_hours: number | null; median_resolve_hours: number | null; notified: number; resolved: number };
+  delivery: { total: number; delivered: number; sent: number; bounced: number; failed: number; complained: number };
+  rejections: { total: number; by_reason: { label: string; count: number }[] };
+  points: { lat: number; lng: number; status: string }[];
+}
+
+const STATUS_PIN: Record<string, string> = {
+  submitted: "#E6A817",
+  in_review: "#00A6BC",
+  notified: "#2D6BD8",
+  resolved: "#2ECC71",
+  rejected: "#E74C3C",
+};
+
+function fmtHours(h: number | null): string {
+  if (h == null) return "—";
+  return h < 48 ? `${Math.round(h * 10) / 10}h` : `${Math.round((h / 24) * 10) / 10}d`;
+}
+
+function ReportInsights({ flash }: { flash: (m: string) => void }) {
+  const [data, setData] = useState<ReportAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [needsMigration, setNeedsMigration] = useState(false);
+  const [days, setDays] = useState(90);
+
+  useEffect(() => {
+    let alive = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/report-analytics?days=${days}`, { cache: "no-store" });
+        const json = (await res.json()) as { analytics?: ReportAnalytics; needsMigration?: boolean };
+        if (!alive) return;
+        setNeedsMigration(!!json.needsMigration);
+        setData(json.analytics ?? null);
+      } catch {
+        if (alive) flash("Failed to load report analytics");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [days, flash]);
+
+  const del = data?.delivery;
+  const delTotal = del?.total ?? 0;
+  const delOk = (del?.delivered ?? 0) + (del?.sent ?? 0);
+  const delRate = delTotal > 0 ? Math.round((delOk / delTotal) * 1000) / 10 : 0;
+  const points = useMemo(
+    () => (data?.points ?? []).map((p) => ({ lat: p.lat, lng: p.lng, color: STATUS_PIN[p.status] ?? "#9DB1B5", title: p.status })),
+    [data],
+  );
+  const center = points.length ? ([points[0]!.lat, points[0]!.lng] as [number, number]) : undefined;
+  const statusRows = Object.entries(data?.totals.by_status ?? {}) as [string, number][];
+
+  return (
+    <div>
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        {[30, 90, 365].map((d) => (
+          <button
+            key={d}
+            onClick={() => setDays(d)}
+            className="rounded-[9px] border px-3 py-1.5 text-[12px] font-bold"
+            style={{ background: days === d ? "#0B2B30" : "#fff", color: days === d ? "#fff" : "#5B7378", borderColor: "#E3EDEE" }}
+          >
+            Last {d === 365 ? "year" : `${d} days`}
+          </button>
+        ))}
+        <span className="ml-auto text-[11px] text-[#9DB1B5]">Civic outcomes · test reports excluded</span>
+      </div>
+
+      {needsMigration && (
+        <div className="mb-3.5 rounded-[11px] border border-[#F3B7AF] bg-[#FDECEA] px-4 py-3 text-[13px] font-bold text-[#C0392B]">
+          ⚠ Run the operational-analytics migration in Supabase (adds reject_reason + admin_report_analytics), then ↻ Refresh.
+        </div>
+      )}
+
+      {loading && !data ? (
+        <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-5 gap-3">
+            <TaskKpi value={data?.totals.reports ?? 0} label={`Reports · ${days === 365 ? "1y" : days + "d"}`} color="#0B2B30" />
+            <TaskKpi value={data?.resolution.notified ?? 0} label="Notified" color="#2D6BD8" />
+            <TaskKpi value={data?.resolution.resolved ?? 0} label="Resolved" color="#1B8B4A" />
+            <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+              <div className="tnum font-display text-[22px] font-black text-[#00A6BC]">{fmtHours(data?.resolution.median_notify_hours ?? null)}</div>
+              <div className="text-[12px] text-[#5B7378]">Median to notify</div>
+            </div>
+            <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+              <div className="tnum font-display text-[22px] font-black text-[#1B8B4A]">{fmtHours(data?.resolution.median_resolve_hours ?? null)}</div>
+              <div className="text-[12px] text-[#5B7378]">Median to resolve</div>
+            </div>
+          </div>
+
+          <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Email delivery</span>
+              <span className="text-[12px] font-bold" style={{ color: delRate >= 90 ? "#1B8B4A" : delRate >= 50 ? "#B7820E" : "#C0392B" }}>{delRate}% delivered</span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#5B7378]">
+              <span>✅ delivered {del?.delivered ?? 0}</span>
+              <span>📨 sent {del?.sent ?? 0}</span>
+              <span>↩ bounced {del?.bounced ?? 0}</span>
+              <span>⚠ failed {del?.failed ?? 0}</span>
+              <span>🚫 complained {del?.complained ?? 0}</span>
+              <span className="ml-auto tnum">{delTotal} attempts</span>
+            </div>
+          </div>
+
+          <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Report locations ({points.length})</div>
+            {points.length ? (
+              <div className="relative h-[280px] overflow-hidden rounded-[10px] border border-[#E3EDEE]">
+                <DrosiaMap points={points} center={center} zoom={center ? 6 : undefined} fitToMarkers interactive showAttribution={false} showZoomControl className="absolute inset-0" ariaLabel="Report locations map" />
+              </div>
+            ) : (
+              <div className="text-[12px] text-[#9DB1B5]">No located reports in this range.</div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <CountBreakdown title="By category" rows={data?.by_category ?? []} />
+            <CountBreakdown title="Top authorities" rows={data?.by_authority ?? []} />
+            <CountBreakdown title="Rejection reasons" rows={data?.rejections.by_reason ?? []} empty="No rejections" />
+            <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
+              <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Status mix</div>
+              {!statusRows.length ? (
+                <div className="text-[12px] text-[#9DB1B5]">No reports.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {statusRows.map(([label, count]) => (
+                    <div key={label} className="flex items-center justify-between text-[12px]">
+                      <StatusBadge status={label} />
+                      <span className="tnum font-extrabold text-[#0B2B30]">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CountBreakdown({ title, rows, empty }: { title: string; rows: { label: string; count: number; resolved?: number }[]; empty?: string }) {
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  return (
+    <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
+      <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">{title}</div>
+      {!rows.length ? (
+        <div className="text-[12px] text-[#9DB1B5]">{empty ?? "No data"}</div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {rows.map((r) => (
+            <div key={r.label} className="flex items-center gap-2">
+              <div className="w-[150px] truncate text-[12px] font-bold text-[#3F5F64]" title={r.label}>{r.label}</div>
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
+                <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.count / max) * 100}%` }} />
+              </div>
+              <div className="tnum w-[64px] text-right text-[12px] font-bold text-[#0B2B30]">
+                {r.count}
+                {r.resolved != null && r.resolved > 0 && <span className="text-[#1B8B4A]"> ·{r.resolved}✓</span>}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -28,7 +28,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const { error } = await getSupabaseAdmin()
     .from("reports")
-    .update({ status: "rejected" } as never)
+    .update({ status: "rejected", reject_reason: body.reason ?? null } as never)
     .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

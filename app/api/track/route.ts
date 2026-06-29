@@ -77,12 +77,19 @@ export async function POST(req: Request): Promise<Response> {
   const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : null;
   const locale = typeof body.locale === "string" && LOCALES.includes(body.locale) ? body.locale : null;
 
+  const admin = getSupabaseAdmin();
   try {
-    await getSupabaseAdmin()
+    await admin
       .from("web_events")
       .insert({ event, path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
   } catch {
     /* table not migrated yet / transient — analytics is best-effort */
+  }
+
+  // Opportunistic hygiene (no cron): occasionally roll up daily aggregates and
+  // purge raw events older than the retention window. Best-effort, fire-and-forget.
+  if (Math.random() < 0.003) {
+    void admin.rpc("web_events_maintenance").then(undefined, () => {});
   }
 
   return new NextResponse(null, { status: 204 });

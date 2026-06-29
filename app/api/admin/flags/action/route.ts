@@ -36,7 +36,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!flag) return NextResponse.json({ error: "Flag not found." }, { status: 404 });
 
   if (body.action === "remove") {
-    await admin.from("reports").update({ status: "rejected" } as never).eq("id", flag.report_id);
+    await admin.from("reports").update({ status: "rejected", reject_reason: "dsa_takedown" } as never).eq("id", flag.report_id);
     await admin.from("content_flags").update({ status: "actioned" } as never).eq("id", id);
     await purgePublicPhotos(flag.report_id); // DSA takedown: drop the public photo object
     return NextResponse.json({ ok: true, action: "removed" });

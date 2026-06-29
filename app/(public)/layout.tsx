@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { TrackPageView } from "@/components/TrackPageView";
 
@@ -19,6 +20,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       </div>
       <TrackPageView />
       <Analytics />
+      <SpeedInsights />
     </LocaleProvider>
   );
 }
