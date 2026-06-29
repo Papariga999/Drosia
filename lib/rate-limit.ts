@@ -32,13 +32,61 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   return { ok: true, remaining: limit - existing.count, retryAfterSeconds: 0 };
 }
 
-/** Best-effort client IP from proxy headers (Cloudflare → Vercel → fallback). */
+/**
+ * Client IP from TRUSTED proxy headers only.
+ *
+ * Order matters for security: we read headers the hosting proxy injects and a
+ * client cannot override (Vercel rewrites x-vercel-forwarded-for / x-real-ip at
+ * the edge). We deliberately do NOT trust cf-connecting-ip or the leftmost
+ * x-forwarded-for by default — a client can send those, which would let an
+ * attacker rotate the rate-limit key and bypass the limit. cf-connecting-ip is
+ * only honored when TRUST_CF_HEADER=true (i.e. the app really sits behind CF).
+ */
 export function clientIp(headers: Headers): string {
-  const cf = headers.get("cf-connecting-ip");
-  if (cf) return cf.trim();
+  if (process.env.TRUST_CF_HEADER === "true") {
+    const cf = headers.get("cf-connecting-ip");
+    if (cf) return cf.trim();
+  }
+  const vercel = headers.get("x-vercel-forwarded-for");
+  if (vercel) return vercel.split(",")[0]!.trim();
   const real = headers.get("x-real-ip");
   if (real) return real.trim();
+  // Last resort: leftmost x-forwarded-for. Client-spoofable, so only a fallback.
   const fwd = headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]!.trim();
   return "unknown";
+}
+
+/**
+ * Durable, cross-instance rate limit backed by Postgres (rate_limit_hit RPC).
+ * The in-memory limiter above is per-serverless-instance and resets on every
+ * cold start, so it cannot protect the admin login from brute force. This shares
+ * a single counter across all instances. Degrades to the in-memory limiter if the
+ * DB/RPC is unavailable (e.g. not yet migrated) — a weak limit beats none.
+ */
+export async function rateLimitDurable(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<RateLimitResult> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { data, error } = await getSupabaseAdmin().rpc("rate_limit_hit", {
+      p_key: key,
+      p_limit: limit,
+      p_window_ms: windowMs,
+    } as never);
+    if (error) throw error;
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { allowed?: boolean; retry_after_seconds?: number }
+      | null;
+    if (!row || typeof row.allowed !== "boolean") throw new Error("rate_limit_hit: no row");
+    return {
+      ok: row.allowed,
+      remaining: 0,
+      retryAfterSeconds: row.allowed ? 0 : Math.max(1, Number(row.retry_after_seconds ?? 1)),
+    };
+  } catch {
+    return rateLimit(key, limit, windowMs);
+  }
 }

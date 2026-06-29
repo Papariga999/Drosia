@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, createHash, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 /**
@@ -11,7 +11,16 @@ export const ADMIN_COOKIE = "drosia_admin";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
 function secret(): string {
-  return process.env.ADMIN_SESSION_SECRET || process.env.WEBHOOK_SECRET || "dev-insecure-secret";
+  const configured = process.env.ADMIN_SESSION_SECRET || process.env.WEBHOOK_SECRET;
+  if (configured) return configured;
+  // NEVER fall back to a hardcoded secret in production: a known secret means
+  // anyone can forge a valid admin cookie (issued.HMAC(issued)) → full takeover.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "ADMIN_SESSION_SECRET (or WEBHOOK_SECRET) must be set in production — refusing an insecure default.",
+    );
+  }
+  return "dev-insecure-secret";
 }
 
 function sign(payload: string): string {
@@ -30,16 +39,29 @@ export function checkPassword(input: string): boolean {
   return safeEqual(input, expected);
 }
 
+/**
+ * Short fingerprint of the current admin password. Binding it into the session
+ * means changing ADMIN_PASSWORD invalidates every existing cookie (a basic
+ * revocation: rotate the password to log everyone out). Mirrored byte-for-byte
+ * in middleware.ts via Web Crypto.
+ */
+function passwordFingerprint(): string {
+  return createHash("sha256").update(process.env.ADMIN_PASSWORD ?? "").digest("hex").slice(0, 16);
+}
+
 export function makeSessionValue(): string {
-  const issued = Date.now().toString();
-  return `${issued}.${sign(issued)}`;
+  const payload = `${Date.now()}.${passwordFingerprint()}`;
+  return `${payload}.${sign(payload)}`;
 }
 
 export function isValidSessionValue(value: string | undefined): boolean {
   if (!value) return false;
-  const [issued, mac] = value.split(".");
-  if (!issued || !mac) return false;
-  if (!safeEqual(mac, sign(issued))) return false;
+  const parts = value.split(".");
+  if (parts.length !== 3) return false;
+  const [issued, fp, mac] = parts;
+  if (!issued || !fp || !mac) return false;
+  if (!safeEqual(mac, sign(`${issued}.${fp}`))) return false;
+  if (!safeEqual(fp, passwordFingerprint())) return false; // password rotated → revoked
   const ageMs = Date.now() - Number(issued);
   return Number.isFinite(ageMs) && ageMs >= 0 && ageMs < MAX_AGE_SECONDS * 1000;
 }

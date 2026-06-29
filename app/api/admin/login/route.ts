@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { checkPassword, makeSessionValue, ADMIN_COOKIE, SESSION_COOKIE_OPTIONS } from "@/lib/admin/session";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request): Promise<Response> {
   const ip = clientIp(req.headers);
-  const limit = rateLimit(`admin-login:${ip}`, 10, 10 * 60 * 1000);
+  const limit = await rateLimitDurable(`admin-login:${ip}`, 10, 10 * 60 * 1000);
   if (!limit.ok) {
     return NextResponse.json({ error: "Too many attempts." }, { status: 429 });
   }

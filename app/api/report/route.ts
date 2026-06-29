@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
 import { reportFieldsSchema, validatePhotos, MAX_PHOTOS, type ReportFields } from "@/lib/report-intake";
 
@@ -38,7 +39,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const ip = clientIp(req.headers);
-  const limit = rateLimit(`report:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const limit = await rateLimitDurable(`report:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many reports. Please try again later." },
@@ -114,11 +115,20 @@ export async function POST(req: Request): Promise<Response> {
       p_author_token: fields.authorToken,
       p_photo_paths: uploaded,
     } as never;
+    // Geofence is STRICT by default: a point outside every active country is
+    // rejected (principle §2.3 / §5.1 — "Berlin/sea out"). Set GEOFENCE_RELAXED=true
+    // ONLY for cross-country testing; never in production.
+    const relaxed = process.env.GEOFENCE_RELAXED === "true";
+
     const { data: rpcToken, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
 
     let token = rpcToken as string | null;
     if (rpcError) {
       if (rpcError.message.includes("OUT_OF_BOUNDS")) {
+        if (!relaxed) {
+          await storage.remove(uploaded);
+          return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
+        }
         token = await insertUnroutedReport(fields, uploaded);
       } else {
         await storage.remove(uploaded); // atomic cleanup — never orphan blobs
@@ -127,18 +137,39 @@ export async function POST(req: Request): Promise<Response> {
     }
     if (!token) throw new Error("intake_report did not return a token");
 
-    // Anonymize + persist (best-effort). The report stays non-public until every
-    // photo is blur_status='done' AND it is approved in moderation.
-    try {
-      const { data: row } = await admin
+    // Belt-and-suspenders: enforce the geofence in code too, so it holds even on
+    // a DB whose intake_report predates the strict (OUT_OF_BOUNDS) behavior. If the
+    // point fell outside every active country, country_code is null → reject.
+    if (!relaxed) {
+      const { data: routed } = await admin
         .from("reports")
-        .select("id")
+        .select("id, country_code")
         .eq("public_token", token)
-        .maybeSingle<{ id: string }>();
-      if (row?.id) await anonymizeReportPhotos(row.id);
-    } catch (e) {
-      console.warn("[/api/report] anonymization deferred:", e);
+        .maybeSingle<{ id: string; country_code: string | null }>();
+      if (routed && !routed.country_code) {
+        await admin.from("reports").delete().eq("id", routed.id); // cascades to report_photos
+        await storage.remove(uploaded).catch(() => {});
+        return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
+      }
     }
+
+    // Anonymize off the hot path: after() runs once the response is flushed, so a
+    // slow blur on 3 large photos can't time out the submit. The report stays
+    // non-public until every photo is blur_status='done' AND approved in
+    // moderation; approval also re-runs anonymization, so this is a head start.
+    const reportToken = token;
+    after(async () => {
+      try {
+        const { data: row } = await admin
+          .from("reports")
+          .select("id")
+          .eq("public_token", reportToken)
+          .maybeSingle<{ id: string }>();
+        if (row?.id) await anonymizeReportPhotos(row.id);
+      } catch (e) {
+        console.warn("[/api/report] background anonymization failed:", e);
+      }
+    });
 
     return NextResponse.json({ token, status: "submitted" }, { status: 201 });
   } catch (err) {
