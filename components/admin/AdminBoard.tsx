@@ -11,6 +11,7 @@ import type {
   AdminDisputeRow,
   AdminFlagRow,
   AdminReportRow,
+  AdminTaskRow,
   DeliveryHealth,
 } from "@/lib/admin/types";
 
@@ -33,7 +34,7 @@ function ago(iso: string): string {
  * still show demo data (clearly labelled) — next to be wired.
  * The outbound authority email stays in the authority's locale, never English.
  */
-type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags";
+type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags" | "status";
 
 const STATUS_PILL: Record<string, [string, string]> = {
   delivered: ["#EAFBF1", "#1B8B4A"],
@@ -299,9 +300,11 @@ export function AdminBoard() {
     authorities: "Authority Directory",
     delivery: "Delivery & Bounce Monitor",
     flags: "Flags & Disputes",
+    status: "Project Status & To-dos",
   };
   const nav: { key: Screen; icon: string; label: string; count?: number }[] = [
     { key: "queue", icon: "📋", label: "Reports", count: pendingCount },
+    { key: "status", icon: "🗂", label: "Status & To-dos" },
     { key: "authorities", icon: "🏛", label: "Authority Directory" },
     { key: "delivery", icon: "📡", label: "Delivery & Bounce" },
     { key: "flags", icon: "⚐", label: "Flags & Disputes" },
@@ -380,6 +383,7 @@ export function AdminBoard() {
               onNotify={() => notifyNow(selected)}
             />
           )}
+          {screen === "status" && <StatusView flash={flash} />}
           {screen === "authorities" && <AuthoritiesView flash={flash} />}
           {screen === "delivery" && <DeliveryView flash={flash} />}
           {screen === "flags" && <FlagsView tab={flagTab} setTab={setFlagTab} flash={flash} />}
@@ -1448,5 +1452,365 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
     <button onClick={onClick} className="rounded-[9px] px-4 py-2.5 text-[13px] font-bold" style={{ background: active ? "#0B2B30" : "#fff", color: active ? "#fff" : "#5B7378" }}>
       {children}
     </button>
+  );
+}
+
+/* ---------- Project Status & To-dos (shared project board) ---------- */
+const TASK_PRIORITY_META: Record<AdminTaskRow["priority"], { label: string; bg: string; fg: string; order: number }> = {
+  p0: { label: "P0", bg: "#FDECEA", fg: "#C0392B", order: 0 },
+  p1: { label: "P1", bg: "#FFF4DC", fg: "#B7820E", order: 1 },
+  p2: { label: "P2", bg: "#E0F7FA", fg: "#00A6BC", order: 2 },
+  none: { label: "—", bg: "#F0F4F5", fg: "#5B7378", order: 3 },
+};
+const TASK_STATUS_META: Record<AdminTaskRow["status"], { label: string; order: number }> = {
+  open: { label: "Open", order: 0 },
+  in_progress: { label: "In progress", order: 1 },
+  done: { label: "Done", order: 2 },
+};
+const TASK_CATEGORY_META: Record<AdminTaskRow["category"], { label: string; emoji: string }> = {
+  bug: { label: "Bug", emoji: "🐞" },
+  task: { label: "Task", emoji: "🔧" },
+  idea: { label: "Idea", emoji: "💡" },
+  ops: { label: "Ops", emoji: "⚙️" },
+  launch: { label: "Launch", emoji: "🚀" },
+};
+const PRIORITY_OPTIONS = [
+  { value: "p0", label: "P0 · blocker" },
+  { value: "p1", label: "P1 · important" },
+  { value: "p2", label: "P2 · later" },
+  { value: "none", label: "No priority" },
+];
+const CATEGORY_OPTIONS = [
+  { value: "task", label: "🔧 Task" },
+  { value: "bug", label: "🐞 Bug" },
+  { value: "idea", label: "💡 Idea" },
+  { value: "ops", label: "⚙️ Ops" },
+  { value: "launch", label: "🚀 Launch" },
+];
+
+function StatusView({ flash }: { flash: (m: string) => void }) {
+  const [tasks, setTasks] = useState<AdminTaskRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [needsMigration, setNeedsMigration] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<AdminTaskRow | null>(null);
+
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState("p2");
+  const [category, setCategory] = useState("task");
+
+  const [fStatus, setFStatus] = useState<"all" | "open" | "in_progress" | "done">("all");
+  const [fCategory, setFCategory] = useState("all");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/tasks", { cache: "no-store" });
+      const data = (await res.json()) as { tasks?: AdminTaskRow[]; needsMigration?: boolean };
+      setNeedsMigration(!!data.needsMigration);
+      setTasks(data.tasks ?? []);
+    } catch {
+      flash("Failed to load tasks");
+    } finally {
+      setLoading(false);
+    }
+  }, [flash]);
+
+  useEffect(() => {
+    // Load the shared board on open (server sync, not derived state).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function add() {
+    const t = title.trim();
+    if (!t) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: t, priority, category }),
+      });
+      const data = (await res.json()) as { error?: string; needsMigration?: boolean };
+      if (!res.ok) {
+        flash(data.error ?? "Add failed");
+        if (data.needsMigration) setNeedsMigration(true);
+        return;
+      }
+      setTitle("");
+      setPriority("p2");
+      setCategory("task");
+      flash("✓ To-do added");
+      await load();
+    } catch {
+      flash("Add failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function patchTask(
+    id: string,
+    fields: Partial<Pick<AdminTaskRow, "status" | "priority" | "title" | "details" | "category">>,
+  ): Promise<boolean> {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/tasks", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...fields }),
+      });
+      if (!res.ok) {
+        const d = (await res.json()) as { error?: string };
+        flash(d.error ?? "Update failed");
+        return false;
+      }
+      await load();
+      return true;
+    } catch {
+      flash("Update failed — network error");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/tasks?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        flash("Delete failed");
+        return;
+      }
+      flash("To-do deleted");
+      await load();
+    } catch {
+      flash("Delete failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const counts = useMemo(() => {
+    const c = { all: tasks.length, open: 0, in_progress: 0, done: 0, p0open: 0, p1open: 0 };
+    for (const t of tasks) {
+      c[t.status] += 1;
+      if (t.status !== "done" && t.priority === "p0") c.p0open += 1;
+      if (t.status !== "done" && t.priority === "p1") c.p1open += 1;
+    }
+    return c;
+  }, [tasks]);
+
+  const rows = useMemo(() => {
+    const filtered = tasks.filter((t) => {
+      if (fStatus !== "all" && t.status !== fStatus) return false;
+      if (fCategory !== "all" && t.category !== fCategory) return false;
+      return true;
+    });
+    return filtered.sort((a, b) => {
+      const s = (TASK_STATUS_META[a.status]?.order ?? 9) - (TASK_STATUS_META[b.status]?.order ?? 9);
+      if (s !== 0) return s;
+      const p = (TASK_PRIORITY_META[a.priority]?.order ?? 9) - (TASK_PRIORITY_META[b.priority]?.order ?? 9);
+      if (p !== 0) return p;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+  }, [tasks, fStatus, fCategory]);
+
+  return (
+    <div>
+      {needsMigration && (
+        <div className="mb-3.5 rounded-[11px] border border-[#F3B7AF] bg-[#FDECEA] px-4 py-3 text-[13px] font-bold text-[#C0392B]">
+          ⚠ The <code className="font-mono">admin_tasks</code> table isn’t created yet — run the admin_tasks migration in Supabase (SQL editor), then ↻ Refresh. To-dos can’t be saved until then.
+        </div>
+      )}
+
+      {/* Add a to-do */}
+      <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Add a to-do</div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && add()}
+            placeholder="What needs doing? (press Enter to add)"
+            className="min-w-[260px] flex-1 rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px] outline-none focus:border-primary"
+          />
+          <select value={priority} onChange={(e) => setPriority(e.target.value)} className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px] font-bold text-[#3F5F64]">
+            {PRIORITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-2 text-[13px] font-bold text-[#3F5F64]">
+            {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button onClick={add} disabled={busy || !title.trim()} className="rounded-[10px] bg-primary px-4 py-2 font-display text-[13px] font-extrabold text-white disabled:opacity-50">+ Add</button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="mb-3.5 grid grid-cols-5 gap-3">
+        <TaskKpi value={counts.open} label="Open" color="#B7820E" />
+        <TaskKpi value={counts.in_progress} label="In progress" color="#00A6BC" />
+        <TaskKpi value={counts.done} label="Done" color="#1B8B4A" />
+        <TaskKpi value={counts.p0open} label="P0 open" color="#C0392B" />
+        <TaskKpi value={counts.p1open} label="P1 open" color="#B7820E" />
+      </div>
+
+      {/* Filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {(["all", "open", "in_progress", "done"] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setFStatus(s)}
+            className="rounded-[9px] border px-3 py-1.5 text-[12px] font-bold"
+            style={{ background: fStatus === s ? "#0B2B30" : "#fff", color: fStatus === s ? "#fff" : "#5B7378", borderColor: "#E3EDEE" }}
+          >
+            {s === "all" ? "All" : TASK_STATUS_META[s].label}
+          </button>
+        ))}
+        <FilterSelect value={fCategory} onChange={setFCategory} options={[{ value: "all", label: "All categories" }, ...CATEGORY_OPTIONS]} />
+        <span className="tnum ml-auto text-[12px] text-[#9DB1B5]">{rows.length} of {tasks.length}</span>
+      </div>
+
+      {loading ? (
+        <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
+      ) : !tasks.length ? (
+        <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">
+          {needsMigration ? "Run the migration above, then add your first to-do." : "No to-dos yet. Add the first one above."}
+        </div>
+      ) : !rows.length ? (
+        <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No to-dos match the filters.</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {rows.map((t) => {
+            const pm = TASK_PRIORITY_META[t.priority];
+            const cm = TASK_CATEGORY_META[t.category];
+            const done = t.status === "done";
+            return (
+              <div key={t.id} className="flex items-start gap-3 rounded-xl border border-[#E3EDEE] bg-white p-3.5" style={{ opacity: done ? 0.6 : 1 }}>
+                <select
+                  value={t.status}
+                  onChange={(e) => patchTask(t.id, { status: e.target.value as AdminTaskRow["status"] })}
+                  disabled={busy}
+                  className="mt-0.5 rounded-[8px] border border-[#E3EDEE] bg-[#F7FBFC] px-2 py-1 text-[11px] font-bold text-[#3F5F64]"
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="done">Done</option>
+                </select>
+                <span className="mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-extrabold" style={{ background: pm.bg, color: pm.fg }}>{pm.label}</span>
+                <div className="min-w-0 flex-1">
+                  <button onClick={() => setEditing(t)} className="block text-left text-[13px] font-bold text-[#0B2B30] hover:text-primary" style={{ textDecoration: done ? "line-through" : "none" }}>
+                    {cm.emoji} {t.title}
+                  </button>
+                  {t.details && <p className="mt-1 text-[12px] leading-relaxed text-[#5B7378]">{t.details}</p>}
+                </div>
+                <button onClick={() => setEditing(t)} className="mt-0.5 text-[12px] font-bold text-[#9DB1B5] hover:text-primary">Edit</button>
+                <button onClick={() => remove(t.id)} disabled={busy} className="mt-0.5 text-[12px] font-bold text-[#C0392B] disabled:opacity-50">Delete</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && (
+        <TaskEditModal
+          task={editing}
+          busy={busy}
+          onClose={() => setEditing(null)}
+          onSave={async (fields) => {
+            const ok = await patchTask(editing.id, fields);
+            if (ok) setEditing(null);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function TaskKpi({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+      <div className="tnum font-display text-[24px] font-black" style={{ color }}>{value}</div>
+      <div className="text-[12px] text-[#5B7378]">{label}</div>
+    </div>
+  );
+}
+
+function TaskEditModal({
+  task,
+  busy,
+  onClose,
+  onSave,
+}: {
+  task: AdminTaskRow;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (fields: {
+    title: string;
+    details: string | null;
+    status: AdminTaskRow["status"];
+    priority: AdminTaskRow["priority"];
+    category: AdminTaskRow["category"];
+  }) => void;
+}) {
+  const [title, setTitle] = useState(task.title);
+  const [details, setDetails] = useState(task.details ?? "");
+  const [status, setStatus] = useState<AdminTaskRow["status"]>(task.status);
+  const [priority, setPriority] = useState<AdminTaskRow["priority"]>(task.priority);
+  const [category, setCategory] = useState<AdminTaskRow["category"]>(task.category);
+
+  return (
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
+      <div className="w-[540px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2.5 border-b border-[#E3EDEE] px-5 py-4">
+          <span className="text-[18px]">🗂</span>
+          <div className="font-display text-[16px] font-black">Edit to-do</div>
+          <button onClick={onClose} className="ml-auto text-[18px] text-[#9DB1B5]">✕</button>
+        </div>
+        <div className="px-5 py-5">
+          <label className="mb-3 block">
+            <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Title</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-[9px] border border-[#E3EDEE] p-2.5 text-[13px] outline-none focus:border-primary" />
+          </label>
+          <div className="mb-3 grid grid-cols-3 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Status</span>
+              <select value={status} onChange={(e) => setStatus(e.target.value as AdminTaskRow["status"])} className="w-full rounded-[9px] border border-[#E3EDEE] bg-white p-2.5 text-[13px]">
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="done">Done</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Priority</span>
+              <select value={priority} onChange={(e) => setPriority(e.target.value as AdminTaskRow["priority"])} className="w-full rounded-[9px] border border-[#E3EDEE] bg-white p-2.5 text-[13px]">
+                {PRIORITY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Category</span>
+              <select value={category} onChange={(e) => setCategory(e.target.value as AdminTaskRow["category"])} className="w-full rounded-[9px] border border-[#E3EDEE] bg-white p-2.5 text-[13px]">
+                {CATEGORY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Details</span>
+            <textarea value={details} onChange={(e) => setDetails(e.target.value)} className="h-[120px] w-full rounded-[9px] border border-[#E3EDEE] p-2.5 text-[13px] outline-none focus:border-primary" />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2.5 border-t border-[#E3EDEE] px-5 py-3.5">
+          <button onClick={onClose} className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2.5 font-display text-[13px] font-extrabold text-[#5B7378]">Cancel</button>
+          <button
+            onClick={() => onSave({ title: title.trim() || task.title, details: details.trim() ? details.trim() : null, status, priority, category })}
+            disabled={busy}
+            className="rounded-[10px] bg-primary px-5 py-2.5 font-display text-[13px] font-extrabold text-white disabled:opacity-60"
+          >
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

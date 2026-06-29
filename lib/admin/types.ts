@@ -47,6 +47,18 @@ export interface AdminDisputeRow {
   created_at: string;
 }
 
+/** A row on the admin "Status & To-dos" project board (admin_tasks). */
+export interface AdminTaskRow {
+  id: string;
+  title: string;
+  details: string | null;
+  status: "open" | "in_progress" | "done";
+  priority: "p0" | "p1" | "p2" | "none";
+  category: "bug" | "task" | "idea" | "ops" | "launch";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DeliveryHealth {
   total: number;
   deliveredPct: number;
