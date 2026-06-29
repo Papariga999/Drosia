@@ -947,7 +947,7 @@ function ReportEditModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
       <div className="w-[520px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2.5 border-b border-[#E3EDEE] px-5 py-4">
           <span className="text-[18px]">✎</span>
@@ -1023,7 +1023,7 @@ function DeleteConfirm({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onCancel}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0B2B30]/40" onClick={onCancel}>
       <div className="w-[440px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 pt-5">
           <div className="font-display text-[16px] font-black text-[#C0392B]">Delete report permanently?</div>
@@ -1179,7 +1179,7 @@ function AuthorityModal({ form, busy, onClose, onSave }: { form: AuthForm; busy:
   const [f, setF] = useState<AuthForm>(form);
   const set = (k: keyof AuthForm, v: string | boolean) => setF((p) => ({ ...p, [k]: v }));
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
       <div className="max-h-[90vh] w-[520px] overflow-auto rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2.5 border-b border-[#E3EDEE] px-5 py-4">
           <span className="text-[18px]">🏛</span>
