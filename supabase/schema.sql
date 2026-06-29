@@ -107,6 +107,12 @@ do $$ begin
   end if;
 end $$;
 
+-- Admin moderation: reversibly hide a report from ALL public surfaces (the
+-- "deactivate / pause" operator action) WITHOUT deleting it. Independent of the
+-- status machine, so even a 'notified' report can be pulled offline and put back
+-- later. Additive + idempotent; defaults to visible.
+alter table reports add column if not exists admin_hidden boolean not null default false;
+
 -- Photos: original (private) + anonymized public variant.
 create table if not exists report_photos (
   id            uuid primary key default gen_random_uuid(),
@@ -261,6 +267,7 @@ create or replace view v_public_reports as
   left join authorities a on a.id = r.authority_id
   where r.status in ('in_review','notified','resolved')
     and r.is_test = false
+    and r.admin_hidden = false
     and exists (
       select 1
       from report_photos ph
@@ -275,7 +282,8 @@ create or replace view v_public_report_photos as
   from report_photos ph
   join reports r on r.id = ph.report_id
   where ph.blur_status = 'done' and ph.public_path is not null
-    and r.status in ('in_review','notified','resolved') and r.is_test = false;
+    and r.status in ('in_review','notified','resolved') and r.is_test = false
+    and r.admin_hidden = false;
 
 -- Authority accountability scorecard — FAIRNESS ENFORCED:
 --   • only delivered ('notified'+'resolved') count, • >= 10, • no test, • no excluded.
@@ -287,7 +295,7 @@ create or replace view v_authority_scorecard as
                / nullif(count(*) filter (where r.status in ('notified','resolved')), 0), 1) as resolution_rate_pct
   from authorities a
   join reports r on r.authority_id = a.id
-   and r.is_test = false and r.excluded_from_ranking = false
+   and r.is_test = false and r.excluded_from_ranking = false and r.admin_hidden = false
   group by a.id, a.country_code, a.name_i18n, a.level
   having count(*) filter (where r.status in ('notified','resolved')) >= 10;
 
@@ -418,6 +426,9 @@ revoke all on function set_authority_geom_geojson(uuid, text) from anon, authent
 -- Exposes lat/lng (decoded from geom) + authority + blur progress for the
 -- operator board, WITHOUT leaking geom WKB or author_token to anything but the
 -- server (anon/authenticated are revoked below).
+-- Drop first: this RETURNS TABLE signature has grown over time (e.g. admin_hidden)
+-- and Postgres refuses `create or replace` when the return shape changes.
+drop function if exists admin_list_reports(text);
 create or replace function admin_list_reports(p_status text)
 returns table (
   id               uuid,
@@ -434,7 +445,8 @@ returns table (
   authority_email  text,
   delivery_channel text,
   photo_count      integer,
-  blur_done_count  integer
+  blur_done_count  integer,
+  admin_hidden     boolean
 )
 language sql
 as $$
@@ -442,7 +454,8 @@ as $$
          st_y(r.geom::geometry), st_x(r.geom::geometry), r.created_at, r.notified_at,
          r.authority_id, a.name_i18n, a.email_official, a.delivery_channel::text,
          (select count(*)::int from report_photos p where p.report_id = r.id),
-         (select count(*)::int from report_photos p where p.report_id = r.id and p.blur_status = 'done')
+         (select count(*)::int from report_photos p where p.report_id = r.id and p.blur_status = 'done'),
+         r.admin_hidden
   from reports r
   left join authorities a on a.id = r.authority_id
   where r.is_test = false

@@ -73,6 +73,8 @@ export interface AdminReportRow {
   delivery_channel: string | null;
   photo_count: number;
   blur_done_count: number;
+  /** Reversibly hidden from all public surfaces by an operator (pause/deactivate). */
+  admin_hidden: boolean;
   /** Anonymized (public) preview URL of the first photo; null until blur is done. */
   photo_url: string | null;
 }

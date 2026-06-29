@@ -5,6 +5,9 @@
  */
 export const REPORT_PUBLIC_BUCKET = "report-public";
 
+/** Private bucket for original (un-anonymized) uploads — service-role access only. */
+export const REPORT_ORIGINALS_BUCKET = "report-originals";
+
 /** Public URL for an anonymized photo path in the public bucket. */
 export function anonymizedPhotoUrl(path: string): string {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";

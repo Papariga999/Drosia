@@ -188,6 +188,78 @@ export function AdminBoard() {
     }
   }
 
+  async function updateReport(row: AdminReportRow, patch: { category?: string; description?: string | null }): Promise<boolean> {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/reports/update", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: row.id, ...patch }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        flash(data.error ?? "Update failed");
+        return false;
+      }
+      flash("✓ Report updated");
+      setSelected((cur) => (cur && cur.id === row.id ? { ...cur, ...patch } : cur));
+      await fetchReports();
+      return true;
+    } catch {
+      flash("Update failed — network error");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setVisibility(row: AdminReportRow, hidden: boolean) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/reports/visibility", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: row.id, hidden }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        flash(data.error ?? "Action failed");
+        return;
+      }
+      flash(hidden ? "Report unpublished (hidden from public)" : "Report republished");
+      setSelected((cur) => (cur && cur.id === row.id ? { ...cur, admin_hidden: hidden } : cur));
+      await fetchReports();
+    } catch {
+      flash("Action failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteReport(row: AdminReportRow) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/reports/delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: row.id }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        flash(data.error ?? "Delete failed");
+        return;
+      }
+      flash("Report deleted permanently");
+      setScreen("queue");
+      setSelected(null);
+      await fetchReports();
+    } catch {
+      flash("Delete failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!authed) return <SignIn onSignIn={() => setAuthed(true)} />;
 
   const pendingCount = reports.filter((r) => r.status === "submitted").length;
@@ -272,6 +344,9 @@ export function AdminBoard() {
               onBack={() => { setScreen("queue"); setSelected(null); }}
               onApprove={() => approve(selected)}
               onReject={(reason) => reject(selected, reason)}
+              onEdit={(patch) => updateReport(selected, patch)}
+              onVisibility={(hidden) => setVisibility(selected, hidden)}
+              onDelete={() => deleteReport(selected)}
             />
           )}
           {screen === "authorities" && <AuthoritiesView flash={flash} />}
@@ -518,7 +593,10 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
                 <div className="truncate px-3.5 py-2.5 font-mono text-[11px] font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[12px]" style={{ color: authority ? "#0B2B30" : "#C0392B" }}>{authority ?? "⚠ unrouted"}</div>
-                <div className="px-3.5 py-2.5"><StatusBadge status={r.status} /></div>
+                <div className="flex items-center gap-1 px-3.5 py-2.5">
+                  <StatusBadge status={r.status} />
+                  {r.admin_hidden && <span className="text-[10px] font-bold text-[#9DB1B5]" title="Hidden from public">· hidden</span>}
+                </div>
                 <div className="tnum px-3.5 py-2.5 font-display text-[13px] font-extrabold" style={{ color: ageColor }}>{age}d</div>
                 <div className="tnum px-3.5 py-2.5 text-[11px] text-[#5B7378]">{shortDate(r.created_at)}</div>
               </button>
@@ -563,22 +641,38 @@ function DetailView({
   onBack,
   onApprove,
   onReject,
+  onEdit,
+  onVisibility,
+  onDelete,
 }: {
   report: AdminReportRow;
   busy: boolean;
   onBack: () => void;
   onApprove: () => void;
   onReject: (reason: string) => void;
+  onEdit: (patch: { category?: string; description?: string | null }) => Promise<boolean>;
+  onVisibility: (hidden: boolean) => void;
+  onDelete: () => void;
 }) {
   const [reason, setReason] = useState("private_person");
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
   const authority = report.authority_name?.en ?? report.authority_name?.el;
   const isPending = report.status === "submitted";
+  // "Live" = currently on a public surface (published + not hidden). Only these
+  // can be unpublished; hidden ones can be republished.
+  const isPublished = ["in_review", "notified", "resolved"].includes(report.status);
   return (
     <div>
       <div className="mb-3.5 flex items-center gap-3">
         <button onClick={onBack} className="text-[13px] font-bold text-[#00A6BC]">‹ Back to reports</button>
         <StatusBadge status={report.status} />
+        {report.admin_hidden && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F0F4F5] px-2.5 py-0.5 text-[11px] font-bold text-[#5B7378]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#9DB1B5]" /> Hidden from public
+          </span>
+        )}
         <span className="tnum ml-auto text-[11px] text-[#9DB1B5]">
           Created {shortDate(report.created_at)}
           {report.notified_at ? ` · Notified ${shortDate(report.notified_at)}` : ""}
@@ -648,7 +742,7 @@ function DetailView({
               <div className="text-[13px] font-bold text-[#C0392B]">⚠ No authority matched — out of any coverage polygon.</div>
             )}
           </Card>
-          {isPending ? (
+          {isPending && (
             <>
               <div className="flex gap-2.5">
                 <button
@@ -678,19 +772,176 @@ function DetailView({
                 </div>
               </Card>
             </>
-          ) : (
-            <Card>
-              <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">
-                Status
-                <StatusBadge status={report.status} />
-              </div>
-              <p className="text-[12px] leading-relaxed text-[#5B7378]">
-                {report.status === "rejected"
-                  ? "This report was rejected and is not public. No further moderation action is needed."
-                  : "This report has already been moderated and published. Use Flags & Disputes for takedown or ranking exclusion."}
-              </p>
-            </Card>
           )}
+
+          {/* Manage — available for EVERY status, including already-published reports. */}
+          <Card>
+            <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Manage report</div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setEditing(true)}
+                disabled={busy}
+                className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#0B2B30] hover:border-primary disabled:opacity-50"
+              >
+                ✎ Edit details
+              </button>
+              {isPublished && !report.admin_hidden && (
+                <button
+                  onClick={() => onVisibility(true)}
+                  disabled={busy}
+                  className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#B7820E] hover:border-[#E6A817] disabled:opacity-50"
+                >
+                  ⏸ Unpublish (hide)
+                </button>
+              )}
+              {report.admin_hidden && (
+                <button
+                  onClick={() => onVisibility(false)}
+                  disabled={busy}
+                  className="rounded-[10px] border border-[#9FE0C0] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50"
+                >
+                  ▶ Republish
+                </button>
+              )}
+              <button
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy}
+                className="ml-auto rounded-[10px] border border-[#E74C3C] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50"
+              >
+                🗑 Delete
+              </button>
+            </div>
+            <p className="mt-2.5 text-[12px] leading-relaxed text-[#9DB1B5]">
+              {report.admin_hidden
+                ? "Hidden from the public map, tracking page and scorecard. Republish to restore it."
+                : isPublished
+                  ? "Edit content, unpublish to pull it offline (reversible), or delete it permanently."
+                  : report.status === "rejected"
+                    ? "Rejected and not public. You can still edit or delete it permanently."
+                    : "Edit content, or delete it permanently."}
+            </p>
+          </Card>
+        </div>
+      </div>
+
+      {editing && (
+        <ReportEditModal
+          report={report}
+          busy={busy}
+          onClose={() => setEditing(false)}
+          onSave={async (patch) => {
+            const ok = await onEdit(patch);
+            if (ok) setEditing(false);
+          }}
+        />
+      )}
+      {confirmingDelete && (
+        <DeleteConfirm
+          token={report.public_token}
+          busy={busy}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ---------- Report edit + delete-confirm modals ---------- */
+function ReportEditModal({
+  report,
+  busy,
+  onClose,
+  onSave,
+}: {
+  report: AdminReportRow;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (patch: { category?: string; description?: string | null }) => void;
+}) {
+  const [category, setCategory] = useState(report.category);
+  const [description, setDescription] = useState(report.description ?? "");
+  const over = description.length > 500;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
+      <div className="w-[520px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2.5 border-b border-[#E3EDEE] px-5 py-4">
+          <span className="text-[18px]">✎</span>
+          <div className="font-display text-[16px] font-black">Edit report</div>
+          <span className="ml-1 font-mono text-[12px] text-[#9DB1B5]">{report.public_token.slice(0, 8)}</span>
+          <button onClick={onClose} className="ml-auto text-[18px] text-[#9DB1B5]">✕</button>
+        </div>
+        <div className="px-5 py-5">
+          <label className="mb-3 block">
+            <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Category</span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-[9px] border border-[#E3EDEE] bg-white p-2.5 text-[13px] outline-none focus:border-primary"
+            >
+              {REPORT_CATEGORIES.map((c) => <option key={c} value={c}>{catDisplay(c)}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1 flex items-center justify-between text-[11px] font-bold text-[#9DB1B5]">
+              <span>Description</span>
+              <span className="tnum" style={{ color: over ? "#C0392B" : "#9DB1B5" }}>{description.length}/500</span>
+            </span>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description…"
+              className="h-[110px] w-full rounded-[9px] border border-[#E3EDEE] p-2.5 text-[13px] outline-none focus:border-primary"
+              style={{ borderColor: over ? "#E74C3C" : undefined }}
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2.5 border-t border-[#E3EDEE] px-5 py-3.5">
+          <button onClick={onClose} className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2.5 font-display text-[13px] font-extrabold text-[#5B7378]">Cancel</button>
+          <button
+            onClick={() => onSave({ category, description: description.trim() ? description.trim() : null })}
+            disabled={busy || over}
+            className="rounded-[10px] bg-primary px-5 py-2.5 font-display text-[13px] font-extrabold text-white disabled:opacity-60"
+          >
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteConfirm({
+  token,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  token: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onCancel}>
+      <div className="w-[440px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5">
+          <div className="font-display text-[16px] font-black text-[#C0392B]">Delete report permanently?</div>
+          <p className="mt-2 text-[13px] leading-relaxed text-[#5B7378]">
+            Report <span className="font-mono font-bold text-[#0B2B30]">{token.slice(0, 8)}</span> and all of its
+            photos, votes and delivery logs will be erased. This cannot be undone. To take it offline reversibly,
+            use <span className="font-bold">Unpublish</span> instead.
+          </p>
+        </div>
+        <div className="mt-4 flex justify-end gap-2.5 border-t border-[#E3EDEE] px-5 py-3.5">
+          <button onClick={onCancel} className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2.5 font-display text-[13px] font-extrabold text-[#5B7378]">Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="rounded-[10px] bg-[#E74C3C] px-5 py-2.5 font-display text-[13px] font-extrabold text-white disabled:opacity-60"
+          >
+            {busy ? "Deleting…" : "Delete permanently"}
+          </button>
         </div>
       </div>
     </div>

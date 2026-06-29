@@ -20,6 +20,12 @@ describe("schema phase 0 guardrails", () => {
     expect(schema).toMatch(/ph\.public_path\s+is\s+not\s+null/i);
   });
 
+  it("hides admin-unpublished (admin_hidden) reports from the public view", () => {
+    expect(schema).toMatch(/add column if not exists admin_hidden boolean not null default false/i);
+    // v_public_reports must exclude admin-hidden reports alongside test reports.
+    expect(schema).toMatch(/r\.is_test\s*=\s*false\s+and\s+r\.admin_hidden\s*=\s*false/i);
+  });
+
   it("keeps original uploads private at storage bucket creation", () => {
     expect(schema).toMatch(/'report-originals',\s*'report-originals',\s*false/i);
     expect(schema).toMatch(/'report-public',\s*'report-public',\s*true/i);
