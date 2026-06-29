@@ -11,6 +11,7 @@ import { REPORT_CATEGORIES, CATEGORY_META, categoryLabel, type ReportCategory } 
 import { MAX_PHOTOS, MAX_DESCRIPTION } from "@/lib/report-intake";
 import { getDeviceToken } from "@/lib/device-token";
 import { readExifGps, type LatLng } from "@/lib/exif-gps";
+import { trackEvent } from "@/lib/track";
 
 type Step = 1 | 2 | 3 | 4;
 type LocSource = "exif" | "gps" | "manual";
@@ -43,12 +44,25 @@ export function ReportFlow() {
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
   useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
 
+  // Funnel instrumentation (cookieless): entered the flow, and got a location once.
+  useEffect(() => {
+    trackEvent("report_start");
+  }, []);
+  const geoFired = useRef(false);
+  useEffect(() => {
+    if (coords && !geoFired.current) {
+      geoFired.current = true;
+      trackEvent("geolocate");
+    }
+  }, [coords]);
+
   function addFiles(picked: FileList | null) {
     const list = Array.from(picked ?? []).filter((f) => f.type.startsWith("image/"));
     if (!list.length) return;
     const merged = [...files, ...list].slice(0, MAX_PHOTOS);
     setFiles(merged);
     setError(null);
+    trackEvent("photo_added");
     if (!coords && merged[0]) {
       readExifGps(merged[0]).then((g) => {
         if (g) {
@@ -104,9 +118,11 @@ export function ReportFlow() {
       const res = await fetch("/api/report", { method: "POST", body: fd });
       if (res.status === 201) {
         const data = (await res.json()) as { token: string };
+        trackEvent("submit_success", { reportToken: data.token });
         setToken(data.token);
         return;
       }
+      trackEvent("submit_fail");
       setError(
         res.status === 422
           ? dict.flow.errBounds
@@ -117,6 +133,7 @@ export function ReportFlow() {
               : dict.flow.errGeneric,
       );
     } catch {
+      trackEvent("submit_fail");
       setError(dict.flow.errGeneric);
     } finally {
       setSubmitting(false);

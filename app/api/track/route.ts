@@ -13,6 +13,8 @@ export const runtime = "nodejs";
  * failure (incl. table not migrated yet) is swallowed so the page never breaks.
  */
 const LOCALES = ["el", "en", "de"];
+// Allowlist of analytics events (anything else is coerced to 'pageview').
+const EVENTS = ["pageview", "report_start", "photo_added", "geolocate", "submit_success", "submit_fail", "share_click", "map_open"];
 const BOT_RE = /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|headless|lighthouse|pingdom|gtmetrix|uptime|monitor|preview|curl|wget/i;
 const MOBILE_RE = /mobile|android|iphone|ipad|ipod|iemobile|opera mini/i;
 
@@ -50,13 +52,14 @@ export async function POST(req: Request): Promise<Response> {
   const device = deviceClass(ua);
   if (device === "bot") return new NextResponse(null, { status: 204 });
 
-  let body: { path?: string; ref?: string; sid?: string; locale?: string };
+  let body: { event?: string; path?: string; ref?: string; sid?: string; locale?: string };
   try {
     body = await req.json();
   } catch {
     return new NextResponse(null, { status: 204 });
   }
 
+  const event = typeof body.event === "string" && EVENTS.includes(body.event) ? body.event : "pageview";
   const rawPath = typeof body.path === "string" ? body.path : "/";
   let pathname = "/";
   try {
@@ -77,7 +80,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     await getSupabaseAdmin()
       .from("web_events")
-      .insert({ event: "pageview", path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
+      .insert({ event, path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
   } catch {
     /* table not migrated yet / transient — analytics is best-effort */
   }

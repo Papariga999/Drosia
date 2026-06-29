@@ -1830,8 +1830,45 @@ interface WebAnalytics {
     countries: { label: string; views: number }[];
     devices: { label: string; views: number }[];
     top_reports: { label: string; views: number }[];
+    prev: { pageviews: number; sessions: number; report_views: number };
   };
-  reports: { submitted_in_range: number; by_status: Record<string, number> };
+  funnel: {
+    sessions: number;
+    report_start: number;
+    photo_added: number;
+    geolocate: number;
+    submit_success: number;
+    submit_fail: number;
+  };
+  reports: {
+    submitted_in_range: number;
+    submitted_prev: number;
+    notified: number;
+    resolved: number;
+    by_status: Record<string, number>;
+  };
+}
+
+/** Period-over-period % change; null when there's no prior baseline. */
+function deltaPct(cur: number, prev: number): number | null {
+  if (!prev) return null;
+  return Math.round(((cur - prev) / prev) * 100);
+}
+
+function AnalyticsKpi({ value, label, color, delta }: { value: number | string; label: string; color: string; delta?: number | null }) {
+  return (
+    <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+      <div className="flex items-baseline gap-1.5">
+        <div className="tnum font-display text-[24px] font-black" style={{ color }}>{value}</div>
+        {delta != null && (
+          <span className="tnum text-[11px] font-bold" style={{ color: delta > 0 ? "#1B8B4A" : delta < 0 ? "#C0392B" : "#9DB1B5" }} title="vs previous period">
+            {delta > 0 ? "▲" : delta < 0 ? "▼" : "■"} {Math.abs(delta)}%
+          </span>
+        )}
+      </div>
+      <div className="text-[12px] text-[#5B7378]">{label}</div>
+    </div>
+  );
 }
 
 function AnalyticsView({ flash }: { flash: (m: string) => void }) {
@@ -1864,11 +1901,16 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
 
   const web = data?.web;
   const rep = data?.reports;
+  const fun = data?.funnel;
+  const prev = web?.prev;
   const sessions = web?.sessions ?? 0;
   const submitted = rep?.submitted_in_range ?? 0;
-  const notified = rep?.by_status?.notified ?? 0;
-  const resolved = rep?.by_status?.resolved ?? 0;
+  const submittedPrev = rep?.submitted_prev ?? 0;
+  const notified = rep?.notified ?? 0;
+  const resolved = rep?.resolved ?? 0;
+  const prevSessions = prev?.sessions ?? 0;
   const conv = sessions > 0 ? Math.round((submitted / sessions) * 1000) / 10 : 0;
+  const convPrev = prevSessions > 0 ? (submittedPrev / prevSessions) * 100 : 0;
 
   return (
     <div>
@@ -1897,14 +1939,11 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
       ) : (
         <>
           <div className="mb-4 grid grid-cols-5 gap-3">
-            <TaskKpi value={web?.pageviews ?? 0} label="Page views" color="#00A6BC" />
-            <TaskKpi value={sessions} label="Sessions (approx)" color="#2D6BD8" />
-            <TaskKpi value={web?.report_views ?? 0} label="Report views" color="#1ECAD9" />
-            <TaskKpi value={submitted} label={`Reports · ${days}d`} color="#1B8B4A" />
-            <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
-              <div className="tnum font-display text-[24px] font-black text-[#B7820E]">{conv}%</div>
-              <div className="text-[12px] text-[#5B7378]">Session → report</div>
-            </div>
+            <AnalyticsKpi value={web?.pageviews ?? 0} label="Page views" color="#00A6BC" delta={deltaPct(web?.pageviews ?? 0, prev?.pageviews ?? 0)} />
+            <AnalyticsKpi value={sessions} label="Sessions (approx)" color="#2D6BD8" delta={deltaPct(sessions, prevSessions)} />
+            <AnalyticsKpi value={web?.report_views ?? 0} label="Report views" color="#1ECAD9" delta={deltaPct(web?.report_views ?? 0, prev?.report_views ?? 0)} />
+            <AnalyticsKpi value={submitted} label={`Reports · ${days}d`} color="#1B8B4A" delta={deltaPct(submitted, submittedPrev)} />
+            <AnalyticsKpi value={`${conv}%`} label="Session → report" color="#B7820E" delta={deltaPct(conv, convPrev)} />
           </div>
 
           <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
@@ -1913,11 +1952,19 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
           </div>
 
           <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
-            <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Civic funnel · last {days} days</div>
+            <div className="mb-2.5 flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Behavioral funnel · last {days} days</span>
+              {(fun?.submit_fail ?? 0) > 0 && (
+                <span className="text-[11px] font-bold text-[#C0392B]">{fun?.submit_fail} failed submit{(fun?.submit_fail ?? 0) === 1 ? "" : "s"}</span>
+              )}
+            </div>
             <FunnelRow
               steps={[
-                { label: "Sessions", value: sessions, color: "#2D6BD8" },
-                { label: "Reports submitted", value: submitted, color: "#00A6BC" },
+                { label: "Sessions", value: fun?.sessions ?? sessions, color: "#2D6BD8" },
+                { label: "Started report", value: fun?.report_start ?? 0, color: "#00A6BC" },
+                { label: "Added photo", value: fun?.photo_added ?? 0, color: "#1ECAD9" },
+                { label: "Located", value: fun?.geolocate ?? 0, color: "#1ECAD9" },
+                { label: "Submitted", value: fun?.submit_success ?? 0, color: "#2D6BD8" },
                 { label: "Notified", value: notified, color: "#2D6BD8" },
                 { label: "Resolved", value: resolved, color: "#1B8B4A" },
               ]}
