@@ -34,7 +34,7 @@ function ago(iso: string): string {
  * still show demo data (clearly labelled) — next to be wired.
  * The outbound authority email stays in the authority's locale, never English.
  */
-type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags" | "status";
+type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags" | "status" | "analytics";
 
 const STATUS_PILL: Record<string, [string, string]> = {
   delivered: ["#EAFBF1", "#1B8B4A"],
@@ -301,9 +301,11 @@ export function AdminBoard() {
     delivery: "Delivery & Bounce Monitor",
     flags: "Flags & Disputes",
     status: "Project Status & To-dos",
+    analytics: "Website Analytics",
   };
   const nav: { key: Screen; icon: string; label: string; count?: number }[] = [
     { key: "queue", icon: "📋", label: "Reports", count: pendingCount },
+    { key: "analytics", icon: "📊", label: "Analytics" },
     { key: "status", icon: "🗂", label: "Status & To-dos" },
     { key: "authorities", icon: "🏛", label: "Authority Directory" },
     { key: "delivery", icon: "📡", label: "Delivery & Bounce" },
@@ -384,6 +386,7 @@ export function AdminBoard() {
             />
           )}
           {screen === "status" && <StatusView flash={flash} />}
+          {screen === "analytics" && <AnalyticsView flash={flash} />}
           {screen === "authorities" && <AuthoritiesView flash={flash} />}
           {screen === "delivery" && <DeliveryView flash={flash} />}
           {screen === "flags" && <FlagsView tab={flagTab} setTab={setFlagTab} flash={flash} />}
@@ -1811,6 +1814,195 @@ function TaskEditModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Website Analytics (cookieless, privacy-first) ---------- */
+interface WebAnalytics {
+  days: number;
+  web: {
+    pageviews: number;
+    sessions: number;
+    report_views: number;
+    timeseries: { day: string; pageviews: number; sessions: number }[];
+    sources: { label: string; views: number }[];
+    countries: { label: string; views: number }[];
+    devices: { label: string; views: number }[];
+    top_reports: { label: string; views: number }[];
+  };
+  reports: { submitted_in_range: number; by_status: Record<string, number> };
+}
+
+function AnalyticsView({ flash }: { flash: (m: string) => void }) {
+  const [data, setData] = useState<WebAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [needsMigration, setNeedsMigration] = useState(false);
+  const [days, setDays] = useState(30);
+
+  const load = useCallback(
+    async (d: number) => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/admin/analytics?days=${d}`, { cache: "no-store" });
+        const json = (await res.json()) as { analytics?: WebAnalytics; needsMigration?: boolean };
+        setNeedsMigration(!!json.needsMigration);
+        setData(json.analytics ?? null);
+      } catch {
+        flash("Failed to load analytics");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [flash],
+  );
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(days);
+  }, [load, days]);
+
+  const web = data?.web;
+  const rep = data?.reports;
+  const sessions = web?.sessions ?? 0;
+  const submitted = rep?.submitted_in_range ?? 0;
+  const notified = rep?.by_status?.notified ?? 0;
+  const resolved = rep?.by_status?.resolved ?? 0;
+  const conv = sessions > 0 ? Math.round((submitted / sessions) * 1000) / 10 : 0;
+
+  return (
+    <div>
+      <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        {[7, 30, 90].map((d) => (
+          <button
+            key={d}
+            onClick={() => setDays(d)}
+            className="rounded-[9px] border px-3 py-1.5 text-[12px] font-bold"
+            style={{ background: days === d ? "#0B2B30" : "#fff", color: days === d ? "#fff" : "#5B7378", borderColor: "#E3EDEE" }}
+          >
+            Last {d} days
+          </button>
+        ))}
+        <span className="ml-auto text-[11px] text-[#9DB1B5]">🔒 Cookieless · no IP stored · aggregate only</span>
+      </div>
+
+      {needsMigration && (
+        <div className="mb-3.5 rounded-[11px] border border-[#F3B7AF] bg-[#FDECEA] px-4 py-3 text-[13px] font-bold text-[#C0392B]">
+          ⚠ The <code className="font-mono">web_events</code> table isn’t created yet — run the web-events migration in Supabase, then ↻ Refresh. (Traffic is recorded only once the table exists.)
+        </div>
+      )}
+
+      {loading && !data ? (
+        <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-5 gap-3">
+            <TaskKpi value={web?.pageviews ?? 0} label="Page views" color="#00A6BC" />
+            <TaskKpi value={sessions} label="Sessions (approx)" color="#2D6BD8" />
+            <TaskKpi value={web?.report_views ?? 0} label="Report views" color="#1ECAD9" />
+            <TaskKpi value={submitted} label={`Reports · ${days}d`} color="#1B8B4A" />
+            <div className="rounded-xl border border-[#E3EDEE] bg-white p-3.5">
+              <div className="tnum font-display text-[24px] font-black text-[#B7820E]">{conv}%</div>
+              <div className="text-[12px] text-[#5B7378]">Session → report</div>
+            </div>
+          </div>
+
+          <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Page views per day</div>
+            <TrafficBars series={web?.timeseries ?? []} />
+          </div>
+
+          <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Civic funnel · last {days} days</div>
+            <FunnelRow
+              steps={[
+                { label: "Sessions", value: sessions, color: "#2D6BD8" },
+                { label: "Reports submitted", value: submitted, color: "#00A6BC" },
+                { label: "Notified", value: notified, color: "#2D6BD8" },
+                { label: "Resolved", value: resolved, color: "#1B8B4A" },
+              ]}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" />
+            <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono />
+            <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" />
+            <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TrafficBars({ series }: { series: { day: string; pageviews: number; sessions: number }[] }) {
+  if (!series.length) return <div className="text-[12px] text-[#9DB1B5]">No data in this range.</div>;
+  const max = Math.max(1, ...series.map((d) => d.pageviews));
+  return (
+    <div>
+      <div className="flex h-[120px] items-end gap-[3px]">
+        {series.map((d) => (
+          <div
+            key={d.day}
+            title={`${d.day} · ${d.pageviews} views · ${d.sessions} sessions`}
+            className="flex-1 rounded-t-[3px] bg-[#1ECAD9]"
+            style={{ height: `${Math.max(2, (d.pageviews / max) * 100)}%` }}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-[#9DB1B5]">
+        <span>{series[0]?.day}</span>
+        <span>{series[series.length - 1]?.day}</span>
+      </div>
+    </div>
+  );
+}
+
+function FunnelRow({ steps }: { steps: { label: string; value: number; color: string }[] }) {
+  const max = Math.max(1, ...steps.map((s) => s.value));
+  return (
+    <div className="flex flex-col gap-2">
+      {steps.map((s, i) => {
+        const prev = i > 0 ? steps[i - 1]!.value : null;
+        const pct = prev && prev > 0 ? Math.round((s.value / prev) * 100) : null;
+        return (
+          <div key={s.label} className="flex items-center gap-3">
+            <div className="w-[140px] text-[12px] font-bold text-[#3F5F64]">{s.label}</div>
+            <div className="h-6 flex-1 overflow-hidden rounded-[6px] bg-[#F0F4F5]">
+              <div className="h-full rounded-[6px]" style={{ width: `${(s.value / max) * 100}%`, background: s.color }} />
+            </div>
+            <div className="tnum w-[120px] text-right text-[12px] text-[#5B7378]">
+              <span className="font-display font-extrabold text-[#0B2B30]">{s.value}</span>
+              {pct != null && <span className="ml-1 text-[#9DB1B5]">({pct}%)</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function BreakdownCard({ title, rows, empty, mono }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean }) {
+  const max = Math.max(1, ...rows.map((r) => r.views));
+  return (
+    <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
+      <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">{title}</div>
+      {!rows.length ? (
+        <div className="text-[12px] text-[#9DB1B5]">{empty}</div>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {rows.map((r) => (
+            <div key={r.label} className="flex items-center gap-2">
+              <div className={`w-[150px] truncate text-[12px] text-[#3F5F64] ${mono ? "font-mono" : "font-bold"}`} title={r.label}>{r.label}</div>
+              <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
+                <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.views / max) * 100}%` }} />
+              </div>
+              <div className="tnum w-[44px] text-right text-[12px] font-bold text-[#0B2B30]">{r.views}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
