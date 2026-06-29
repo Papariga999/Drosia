@@ -9,13 +9,16 @@ export const runtime = "nodejs";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * POST /api/admin/reports/approve  { id }
+ * POST /api/admin/reports/approve  { id, notify? }
  *
  * Gate: every photo must be blur_status='done' (anonymized) before publishing —
  * we try to (re)run anonymization first, then verify. On approve:
  *   submitted → in_review (public, anonymized only)
- *   then deliverReport() → on success → notified (+ notified_at), logged.
- *   No authority email/channel → HOLD at in_review ("awaiting authority channel").
+ *   then (when notify !== false) deliverReport() → on success → notified
+ *   (+ notified_at), logged. No authority email/channel → HOLD at in_review
+ *   ("awaiting authority channel").
+ * notify=false publishes WITHOUT emailing the authority — the report stays
+ * in_review and no delivery is attempted/logged (operator can notify later).
  * Every delivery attempt is written to delivery_logs — never a silent failure.
  */
 export async function POST(req: Request): Promise<Response> {
@@ -23,7 +26,7 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { id?: string };
+  let body: { id?: string; notify?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -31,6 +34,7 @@ export async function POST(req: Request): Promise<Response> {
   }
   const id = body.id ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  const notify = body.notify !== false; // default: send the authority email
 
   const admin = getSupabaseAdmin();
 
@@ -56,8 +60,15 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Awaiting anonymization (blur not done)." }, { status: 409 });
   }
 
-  // Publish, then deliver + log (shared with resend).
+  // Publish first (anonymized + approved → public).
   await admin.from("reports").update({ status: "in_review" } as never).eq("id", report.id);
+
+  // Publish without notifying: no email, no delivery_logs row, hold at in_review.
+  if (!notify) {
+    return NextResponse.json({ status: "in_review", delivery: "skipped" });
+  }
+
+  // Deliver + log (shared with resend).
   const result = await deliverAndLog(report.id);
 
   if (result.delivery === "awaiting_channel") {

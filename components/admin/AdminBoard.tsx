@@ -116,19 +116,22 @@ export function AdminBoard() {
     setTimeout(() => setToast(null), 2800);
   }, []);
 
-  const fetchReports = useCallback(async () => {
+  const fetchReports = useCallback(async (): Promise<AdminReportRow[]> => {
     setLoading(true);
     try {
       // No status filter — the overview board shows every report and filters client-side.
       const res = await fetch("/api/admin/reports", { cache: "no-store" });
       if (res.status === 401) {
         setAuthed(false);
-        return;
+        return [];
       }
       const data = (await res.json()) as { reports?: AdminReportRow[] };
-      setReports(data.reports ?? []);
+      const list = data.reports ?? [];
+      setReports(list);
+      return list;
     } catch {
       flash("Failed to load reports");
+      return [];
     } finally {
       setLoading(false);
     }
@@ -140,17 +143,19 @@ export function AdminBoard() {
     if (authed) void fetchReports();
   }, [authed, fetchReports]);
 
-  async function approve(row: AdminReportRow) {
+  async function approve(row: AdminReportRow, notify: boolean) {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/reports/approve", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: row.id }),
+        body: JSON.stringify({ id: row.id, notify }),
       });
       const data = (await res.json()) as { status?: string; delivery?: string; error?: string };
       if (!res.ok) {
         flash(data.error ?? "Approve failed");
+      } else if (data.delivery === "skipped") {
+        flash(`✓ Published (in_review) · no email sent`);
       } else if (data.status === "notified") {
         flash(`✓ Approved · email sent · status → notified`);
       } else if (data.delivery === "awaiting_channel") {
@@ -202,8 +207,8 @@ export function AdminBoard() {
         return false;
       }
       flash("✓ Report updated");
-      setSelected((cur) => (cur && cur.id === row.id ? { ...cur, ...patch } : cur));
-      await fetchReports();
+      const list = await fetchReports();
+      setSelected(list.find((r) => r.id === row.id) ?? null);
       return true;
     } catch {
       flash("Update failed — network error");
@@ -227,8 +232,8 @@ export function AdminBoard() {
         return;
       }
       flash(hidden ? "Report unpublished (hidden from public)" : "Report republished");
-      setSelected((cur) => (cur && cur.id === row.id ? { ...cur, admin_hidden: hidden } : cur));
-      await fetchReports();
+      const list = await fetchReports();
+      setSelected(list.find((r) => r.id === row.id) ?? null);
     } catch {
       flash("Action failed — network error");
     } finally {
@@ -255,6 +260,31 @@ export function AdminBoard() {
       await fetchReports();
     } catch {
       flash("Delete failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function notifyNow(row: AdminReportRow) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/deliveries/resend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reportId: row.id }),
+      });
+      const data = (await res.json()) as { delivery?: string; error?: string };
+      if (!res.ok) {
+        flash(data.error ?? "Notify failed");
+      } else if (data.delivery === "sent") {
+        flash("✓ Email sent · status → notified");
+      } else {
+        flash(`Delivery: ${data.delivery ?? "unknown"}${data.error ? ` · ${data.error}` : ""}`);
+      }
+      const list = await fetchReports();
+      setSelected(list.find((r) => r.id === row.id) ?? null);
+    } catch {
+      flash("Notify failed — network error");
     } finally {
       setBusy(false);
     }
@@ -342,11 +372,12 @@ export function AdminBoard() {
               report={selected}
               busy={busy}
               onBack={() => { setScreen("queue"); setSelected(null); }}
-              onApprove={() => approve(selected)}
+              onApprove={(notify) => approve(selected, notify)}
               onReject={(reason) => reject(selected, reason)}
               onEdit={(patch) => updateReport(selected, patch)}
               onVisibility={(hidden) => setVisibility(selected, hidden)}
               onDelete={() => deleteReport(selected)}
+              onNotify={() => notifyNow(selected)}
             />
           )}
           {screen === "authorities" && <AuthoritiesView flash={flash} />}
@@ -644,19 +675,22 @@ function DetailView({
   onEdit,
   onVisibility,
   onDelete,
+  onNotify,
 }: {
   report: AdminReportRow;
   busy: boolean;
   onBack: () => void;
-  onApprove: () => void;
+  onApprove: (notify: boolean) => void;
   onReject: (reason: string) => void;
-  onEdit: (patch: { category?: string; description?: string | null }) => Promise<boolean>;
+  onEdit: (patch: { category?: string; description?: string | null; authority_id?: string | null }) => Promise<boolean>;
   onVisibility: (hidden: boolean) => void;
   onDelete: () => void;
+  onNotify: () => void;
 }) {
   const [reason, setReason] = useState("private_person");
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [notify, setNotify] = useState(true);
   const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
   const authority = report.authority_name?.en ?? report.authority_name?.el;
   const isPending = report.status === "submitted";
@@ -744,16 +778,32 @@ function DetailView({
           </Card>
           {isPending && (
             <>
-              <div className="flex gap-2.5">
+              <Card>
+                <label className="flex items-center gap-2.5 text-[13px] font-bold text-[#3F5F64]">
+                  <input
+                    type="checkbox"
+                    checked={notify}
+                    onChange={(e) => setNotify(e.target.checked)}
+                    className="h-4 w-4 accent-[#00A6BC]"
+                  />
+                  Email the responsible municipality on approval
+                </label>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-[#9DB1B5]">
+                  {notify
+                    ? authority
+                      ? `Sends to ${report.authority_email ?? "the routed authority"} and moves the report to “notified”.`
+                      : "No authority is routed yet — assign one via “Edit details”, otherwise it holds as “awaiting authority email”."
+                    : "Publishes without sending any email (stays “in review”). You can notify later via Edit + re-approve or the Delivery monitor."}
+                </p>
                 <button
-                  onClick={onApprove}
+                  onClick={() => onApprove(notify)}
                   disabled={busy || !blurDone}
                   title={blurDone ? "" : "Awaiting anonymization"}
-                  className="flex-1 rounded-[11px] bg-success py-3 font-display text-[14px] font-extrabold text-white shadow-[0_6px_14px_rgba(46,204,113,0.3)] disabled:opacity-50"
+                  className="mt-3 w-full rounded-[11px] bg-success py-3 font-display text-[14px] font-extrabold text-white shadow-[0_6px_14px_rgba(46,204,113,0.3)] disabled:opacity-50"
                 >
-                  {busy ? "Working…" : "✓ Approve & send"}
+                  {busy ? "Working…" : notify ? "✓ Approve & send" : "✓ Approve (no email)"}
                 </button>
-              </div>
+              </Card>
               <Card>
                 <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Reject</div>
                 <div className="flex gap-2.5">
@@ -801,6 +851,16 @@ function DetailView({
                   className="rounded-[10px] border border-[#9FE0C0] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50"
                 >
                   ▶ Republish
+                </button>
+              )}
+              {report.status === "in_review" && (
+                <button
+                  onClick={onNotify}
+                  disabled={busy}
+                  title={report.authority_email ? `Send to ${report.authority_email}` : "No authority email — assign one via Edit"}
+                  className="rounded-[10px] border border-[#9FD8E0] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#00A6BC] hover:border-primary disabled:opacity-50"
+                >
+                  ✉ Notify now
                 </button>
               )}
               <button
@@ -857,11 +917,35 @@ function ReportEditModal({
   report: AdminReportRow;
   busy: boolean;
   onClose: () => void;
-  onSave: (patch: { category?: string; description?: string | null }) => void;
+  onSave: (patch: { category?: string; description?: string | null; authority_id?: string | null }) => void;
 }) {
   const [category, setCategory] = useState(report.category);
   const [description, setDescription] = useState(report.description ?? "");
+  const [authorityId, setAuthorityId] = useState(report.authority_id ?? "");
+  const [authorities, setAuthorities] = useState<AdminAuthorityRow[] | null>(null);
   const over = description.length > 500;
+
+  useEffect(() => {
+    // Load the directory so the operator can (re)route the report. Authoritative
+    // sync from the server, not derived state.
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/authorities", { cache: "no-store" });
+        const data = (await res.json()) as { authorities?: AdminAuthorityRow[] };
+        if (alive) setAuthorities(data.authorities ?? []);
+      } catch {
+        if (alive) setAuthorities([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const sortedAuthorities = useMemo(
+    () => [...(authorities ?? [])].sort((a, b) => authorityName(a.name_i18n).localeCompare(authorityName(b.name_i18n))),
+    [authorities],
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0B2B30]/40" onClick={onClose}>
       <div className="w-[520px] max-w-[92vw] overflow-hidden rounded-2xl bg-white shadow-float" onClick={(e) => e.stopPropagation()}>
@@ -882,6 +966,22 @@ function ReportEditModal({
               {REPORT_CATEGORIES.map((c) => <option key={c} value={c}>{catDisplay(c)}</option>)}
             </select>
           </label>
+          <label className="mb-3 block">
+            <span className="mb-1 block text-[11px] font-bold text-[#9DB1B5]">Routed authority (recipient on notify)</span>
+            <select
+              value={authorityId}
+              onChange={(e) => setAuthorityId(e.target.value)}
+              disabled={authorities === null}
+              className="w-full rounded-[9px] border border-[#E3EDEE] bg-white p-2.5 text-[13px] outline-none focus:border-primary disabled:opacity-60"
+            >
+              <option value="">{authorities === null ? "Loading authorities…" : "— Unrouted —"}</option>
+              {sortedAuthorities.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {authorityName(a.name_i18n)}{a.email_official ? "" : " · no email"}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="block">
             <span className="mb-1 flex items-center justify-between text-[11px] font-bold text-[#9DB1B5]">
               <span>Description</span>
@@ -899,7 +999,7 @@ function ReportEditModal({
         <div className="flex justify-end gap-2.5 border-t border-[#E3EDEE] px-5 py-3.5">
           <button onClick={onClose} className="rounded-[10px] border border-[#E3EDEE] bg-white px-4 py-2.5 font-display text-[13px] font-extrabold text-[#5B7378]">Cancel</button>
           <button
-            onClick={() => onSave({ category, description: description.trim() ? description.trim() : null })}
+            onClick={() => onSave({ category, description: description.trim() ? description.trim() : null, authority_id: authorityId || null })}
             disabled={busy || over}
             className="rounded-[10px] bg-primary px-5 py-2.5 font-display text-[13px] font-extrabold text-white disabled:opacity-60"
           >
