@@ -16,14 +16,24 @@ export function LocaleProvider({
 }) {
   const [locale, setLocaleState] = useState<Locale>(initialLocale);
 
-  // Restore the visitor's previous choice (no account — just localStorage).
+  // After mount, a previously saved manual choice overrides the server-detected
+  // `initialLocale` (which came from the device's Accept-Language). Syncing here
+  // — rather than during render — is what avoids an SSR/client mismatch. Either
+  // way we set <html lang> to the effective locale for assistive tech.
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem("drosia.locale") : null;
-    // One-time hydration from localStorage after mount: rendering the default
-    // first (then syncing) is what avoids an SSR/client mismatch.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (saved && isLocale(saved)) setLocaleState(saved);
-  }, []);
+    let effective: Locale = initialLocale;
+    try {
+      const saved = window.localStorage.getItem("drosia.locale");
+      if (saved && isLocale(saved)) {
+        effective = saved;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setLocaleState(saved);
+      }
+      document.documentElement.lang = effective;
+    } catch {
+      /* ignore storage failures */
+    }
+  }, [initialLocale]);
 
   const setLocale = useCallback((l: Locale) => {
     setLocaleState(l);
