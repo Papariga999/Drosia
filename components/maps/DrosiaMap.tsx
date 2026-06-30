@@ -30,6 +30,8 @@ interface DrosiaMapProps {
   ariaLabel?: string;
   selectedToken?: string | null;
   onReportSelect?: (report: PublicReport) => void;
+  /** Makes `points` markers clickable (keyboard-focusable) and reports the click back. */
+  onPointSelect?: (point: DrosiaMapPoint) => void;
   onMapReady?: (map: LeafletMapInstance) => void;
   onMapClick?: (latlng: { lat: number; lng: number }) => void;
 }
@@ -60,6 +62,7 @@ export function DrosiaMap({
   ariaLabel = "Map",
   selectedToken,
   onReportSelect,
+  onPointSelect,
   onMapReady,
   onMapClick,
 }: DrosiaMapProps) {
@@ -144,7 +147,17 @@ export function DrosiaMap({
         );
       }
 
-      overlaysRef.current.push(...mappedPoints.map((point) => addPointMarker(L, map, point)));
+      overlaysRef.current.push(
+        ...mappedPoints.map((point) =>
+          addPointMarker(
+            L,
+            map,
+            point,
+            selectedToken != null && point.id === selectedToken,
+            onPointSelect ? () => onPointSelect(point) : undefined,
+          ),
+        ),
+      );
 
       if (fitToMarkers && locations.length > 1) {
         const bounds = L.latLngBounds(locations);
@@ -176,6 +189,7 @@ export function DrosiaMap({
     mappedReports,
     mode,
     onReportSelect,
+    onPointSelect,
     selectedToken,
     showAttribution,
     showZoomControl,
@@ -228,19 +242,23 @@ function addPointMarker(
   L: typeof import("leaflet"),
   map: LeafletMapInstance,
   point: DrosiaMapPoint,
+  selected: boolean,
+  onClick?: () => void,
 ): Marker {
+  const clickable = !!onClick;
   const marker = L.marker([point.lat, point.lng], {
     icon: L.divIcon({
       className: "drosia-leaflet-marker",
-      html: pinHtml(point.color ?? "var(--primary)", point.label ?? "", false),
+      html: pinHtml(point.color ?? "var(--primary)", point.label ?? "", selected),
       iconSize: [46, 54],
       iconAnchor: [23, 50],
     }),
-    interactive: false,
-    keyboard: false,
+    interactive: clickable,
+    keyboard: clickable,
     title: point.title,
   });
 
+  if (onClick) marker.on("click keypress", onClick);
   marker.addTo(map);
   return marker;
 }

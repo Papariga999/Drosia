@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DrosiaMark } from "@/components/brand/Logo";
-import { DrosiaMap } from "@/components/maps/DrosiaMap";
+import { DrosiaMap, type DrosiaMapPoint } from "@/components/maps/DrosiaMap";
 import { CATEGORY_META, REPORT_CATEGORIES, isReportCategory } from "@/lib/categories";
 import { reportAgeDays } from "@/lib/severity";
 import type {
@@ -558,6 +558,7 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
   const [live, setLive] = useState<"all" | LiveKey>("all");
   const [category, setCategory] = useState<string>("all");
   const [windowKey, setWindowKey] = useState<string>("all");
+  const [view, setView] = useState<"list" | "map">("list");
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -689,12 +690,29 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
         <span className="tnum ml-auto text-[12px] text-[#9DB1B5]">
           {rows.length} of {reports.length} report{reports.length === 1 ? "" : "s"}
         </span>
+        <div className="inline-flex overflow-hidden rounded-[9px] border border-[#E3EDEE]">
+          {(["list", "map"] as const).map((v) => {
+            const active = view === v;
+            return (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="px-3 py-2 text-[12px] font-bold transition-colors"
+                style={{ background: active ? "#0B2B30" : "#fff", color: active ? "#fff" : "#5B7378" }}
+              >
+                {v === "list" ? "☰ List" : "🗺 Map"}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {loading ? (
         <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
       ) : !reports.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports yet.</div>
+      ) : view === "map" ? (
+        <ReportsMap rows={rows} onOpen={onOpen} />
       ) : !rows.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports match the current filters.</div>
       ) : (
@@ -738,6 +756,67 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Map overview — same filtered `rows` as the table, plotted as clickable pins.
+ * Pin color follows the traffic-light visibility state (green/amber/red); the
+ * label is the report's age in days. Clicking a pin opens the moderation detail,
+ * so reports can be accessed and edited straight from the map.
+ */
+function ReportsMap({ rows, onOpen }: { rows: AdminReportRow[]; onOpen: (r: AdminReportRow) => void }) {
+  const points = useMemo<DrosiaMapPoint[]>(
+    () =>
+      rows
+        .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
+        .map((r) => ({
+          id: r.public_token,
+          lat: r.lat,
+          lng: r.lng,
+          color: LIVE_META[liveState(r)].color,
+          label: String(reportAgeDays(r)),
+          title: `${catDisplay(r.category)} · ${r.public_token.slice(0, 8)} · ${LIVE_META[liveState(r)].label}`,
+        })),
+    [rows],
+  );
+  const byToken = useMemo(() => new Map(rows.map((r) => [r.public_token, r])), [rows]);
+  const located = points.length;
+
+  return (
+    <div className="relative h-[640px] overflow-hidden rounded-xl border border-[#E3EDEE] bg-white">
+      <DrosiaMap
+        points={points}
+        mode="pins"
+        fitToMarkers
+        interactive
+        showZoomControl
+        className="absolute inset-0"
+        ariaLabel="Reports overview map"
+        onPointSelect={(p) => {
+          const row = p.id ? byToken.get(p.id) : undefined;
+          if (row) onOpen(row);
+        }}
+      />
+
+      {/* Traffic-light legend overlay */}
+      <div className="pointer-events-none absolute left-3 top-3 z-[500] rounded-xl border border-[#E3EDEE] bg-white/95 px-3 py-2.5 shadow-card backdrop-blur">
+        <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#9DB1B5]">Pin color</div>
+        <div className="flex flex-col gap-1.5">
+          {LIVE_ORDER.map((k) => (
+            <div key={k} className="flex items-center gap-2 text-[12px] font-bold" style={{ color: LIVE_META[k].color }}>
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: LIVE_META[k].color }} />
+              {LIVE_META[k].label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Hint chip */}
+      <div className="pointer-events-none absolute bottom-3 left-1/2 z-[500] -translate-x-1/2 rounded-full bg-[#0B2B30]/85 px-3.5 py-1.5 text-[11px] font-bold text-white">
+        {located === 0 ? "No located reports match the current filters" : `${located} report${located === 1 ? "" : "s"} on the map · click a pin to open & edit`}
+      </div>
     </div>
   );
 }
