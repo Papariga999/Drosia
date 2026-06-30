@@ -158,7 +158,13 @@
     "partnerCta": "Unterstützer werden",
     "partnerNote": "Ein offenes Gespräch — unverbindlich."
   },
-  "bottomNav": { "map": "Karte", "urgent": "Dringend", "list": "Liste", "me": "Ich" },
+  "bottomNav": { "home": "Start", "map": "Karte", "urgent": "Dringend", "me": "Ich" },
+  "support": {
+    "back": "Zurück zum Start",
+    "contactTitle": "Sprechen wir",
+    "contactBody": "Erzähl uns kurz von deiner Organisation und wie du den Betrieb von Drosia mittragen möchtest. Unverbindlich — einfach ein offenes Gespräch.",
+    "contactCta": "Schreib uns"
+  },
   "map": {
     "search": "Gemeinde oder Ort suchen",
     "near": "In der Nähe",

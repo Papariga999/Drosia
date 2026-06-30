@@ -10,8 +10,8 @@ export function BottomNav() {
   const path = usePathname();
   return (
     <nav className="sticky bottom-0 z-20 flex h-[62px] items-center justify-around border-t border-line bg-surface-card px-2">
+      <NavItem href="/" icon="🏠" label={dict.bottomNav.home} active={path === "/"} />
       <NavItem href="/map" icon="📍" label={dict.bottomNav.map} active={path.startsWith("/map")} />
-      <NavItem href="/urgent" icon="🔥" label={dict.bottomNav.urgent} active={path.startsWith("/urgent")} />
       <Link
         href="/report"
         aria-label={dict.report.cta}
@@ -19,7 +19,7 @@ export function BottomNav() {
       >
         ＋
       </Link>
-      <NavItem href="/urgent#list" icon="📊" label={dict.bottomNav.list} active={false} />
+      <NavItem href="/urgent" icon="🔥" label={dict.bottomNav.urgent} active={path.startsWith("/urgent")} />
       <NavItem href="/me" icon="💧" label={dict.bottomNav.me} active={path.startsWith("/me")} />
     </nav>
   );

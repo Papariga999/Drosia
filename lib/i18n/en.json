@@ -158,7 +158,13 @@
     "partnerCta": "Become a supporter",
     "partnerNote": "An open conversation — no commitment."
   },
-  "bottomNav": { "map": "Map", "urgent": "Urgent", "list": "List", "me": "Me" },
+  "bottomNav": { "home": "Home", "map": "Map", "urgent": "Urgent", "me": "Me" },
+  "support": {
+    "back": "Back to start",
+    "contactTitle": "Let's talk",
+    "contactBody": "Tell us a bit about your organisation and how you'd like to help carry Drosia. No commitment — just an open conversation.",
+    "contactCta": "Email us"
+  },
   "map": {
     "search": "Search a municipality or place",
     "near": "Near me",
