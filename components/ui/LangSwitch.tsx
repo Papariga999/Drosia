@@ -3,7 +3,7 @@
 import { LOCALES, LOCALE_LABEL } from "@/lib/i18n";
 import { useLocale } from "@/components/LocaleProvider";
 
-/** Scalable EL/EN/DE segmented switch (the "+" hints at future locales). */
+/** Scalable EL/EN/DE segmented language switch. */
 export function LangSwitch() {
   const { locale, setLocale } = useLocale();
   return (
@@ -23,13 +23,6 @@ export function LangSwitch() {
           </button>
         );
       })}
-      <span
-        aria-hidden
-        className="cursor-default px-2 py-2 font-display text-[13px] font-extrabold text-muted"
-        title="More locales coming"
-      >
-        ＋
-      </span>
     </div>
   );
 }
