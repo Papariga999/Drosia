@@ -67,6 +67,64 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Publication "traffic light" — the at-a-glance dimension operators care about most:
+ * is a report currently PUBLIC (green), still WAITING for moderation (amber), or
+ * OFFLINE because it was deactivated/rejected (red)? Derived from the lifecycle status
+ * plus the reversible `admin_hidden` flag — a coarser, more intuitive read than the
+ * five-state report_status badge it sits next to.
+ */
+type LiveKey = "live" | "pending" | "offline";
+const LIVE_ORDER: LiveKey[] = ["live", "pending", "offline"];
+const LIVE_META: Record<LiveKey, { label: string; color: string; soft: string; rowTint: string; hint: string }> = {
+  live:    { label: "Live",    color: "#1FB85A", soft: "#EAFBF1", rowTint: "#FFFFFF", hint: "Public — visible on the map and tracking page" },
+  pending: { label: "Pending", color: "#E6A817", soft: "#FFF4DC", rowTint: "#FFFDF7", hint: "Awaiting moderation — not public yet" },
+  offline: { label: "Offline", color: "#E74C3C", soft: "#FDECEA", rowTint: "#FBFCFC", hint: "Off all public surfaces — hidden by an operator or rejected" },
+};
+function liveState(r: { status: string; admin_hidden: boolean }): LiveKey {
+  if (r.status === "submitted") return "pending";
+  if (r.admin_hidden || r.status === "rejected") return "offline";
+  return "live"; // in_review | notified | resolved, not hidden
+}
+const liveOrder = (r: { status: string; admin_hidden: boolean }) => LIVE_ORDER.indexOf(liveState(r));
+
+/** Literal 3-lamp traffic-light fixture; the lamp for the current state is lit, the rest dimmed. */
+function TrafficLight({ state, size = 7 }: { state: LiveKey; size?: number }) {
+  // Real-world order, top → bottom: red (offline), amber (pending), green (live).
+  const lamps: LiveKey[] = ["offline", "pending", "live"];
+  return (
+    <span className="inline-flex flex-col items-center gap-[2.5px] rounded-[5px] bg-[#0B2B30] px-[3px] py-[3px]" aria-hidden="true">
+      {lamps.map((k) => {
+        const on = k === state;
+        return (
+          <span
+            key={k}
+            className="rounded-full"
+            style={{
+              width: size,
+              height: size,
+              background: on ? LIVE_META[k].color : "#23414A",
+              boxShadow: on ? `0 0 6px ${LIVE_META[k].color}` : "none",
+              opacity: on ? 1 : 0.5,
+            }}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+/** Labeled traffic-light chip (fixture + colored label) — used in rows and the detail header. */
+function LiveBadge({ state }: { state: LiveKey }) {
+  const m = LIVE_META[state];
+  return (
+    <span className="inline-flex items-center gap-2" title={m.hint}>
+      <TrafficLight state={state} />
+      <span className="text-[12px] font-extrabold" style={{ color: m.color }}>{m.label}</span>
+    </span>
+  );
+}
+
 function catDisplay(cat: string): string {
   if (isReportCategory(cat)) return `${CATEGORY_META[cat].emoji} ${CATEGORY_META[cat].label.en}`;
   return cat;
@@ -470,7 +528,7 @@ function Pill({ status }: { status: string }) {
 
 /* ---------- A2 Reports overview (start page) ---------- */
 type StatusFilter = "all" | "submitted" | "in_review" | "notified" | "resolved" | "rejected";
-type SortKey = "date" | "category" | "status" | "age";
+type SortKey = "date" | "category" | "status" | "age" | "live";
 type SortDir = "asc" | "desc";
 
 const TIME_WINDOWS: { key: string; label: string; ms: number | null }[] = [
@@ -497,6 +555,7 @@ const KPI_CARDS: { key: StatusFilter; label: string; color: string }[] = [
 
 function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[]; loading: boolean; onOpen: (r: AdminReportRow) => void }) {
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [live, setLive] = useState<"all" | LiveKey>("all");
   const [category, setCategory] = useState<string>("all");
   const [windowKey, setWindowKey] = useState<string>("all");
   const [query, setQuery] = useState("");
@@ -509,11 +568,18 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
     return c;
   }, [reports]);
 
+  const liveCounts = useMemo(() => {
+    const lc: Record<LiveKey, number> = { live: 0, pending: 0, offline: 0 };
+    for (const r of reports) lc[liveState(r)] += 1;
+    return lc;
+  }, [reports]);
+
   const rows = useMemo(() => {
     const cutoff = windowCutoff(windowKey);
     const q = query.trim().toLowerCase();
     const filtered = reports.filter((r) => {
       if (status !== "all" && r.status !== status) return false;
+      if (live !== "all" && liveState(r) !== live) return false;
       if (category !== "all" && r.category !== category) return false;
       if (cutoff && new Date(r.created_at).getTime() < cutoff) return false;
       if (q) {
@@ -529,28 +595,30 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
       if (sortKey === "date") cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
       else if (sortKey === "age") cmp = reportAgeDays(a) - reportAgeDays(b);
       else if (sortKey === "category") cmp = catDisplay(a.category).localeCompare(catDisplay(b.category));
+      else if (sortKey === "live") cmp = liveOrder(a) - liveOrder(b);
       else cmp = (statusMeta(a.status).order - statusMeta(b.status).order);
       return cmp * dir;
     });
-  }, [reports, status, category, windowKey, query, sortKey, sortDir]);
+  }, [reports, status, live, category, windowKey, query, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
       setSortKey(key);
-      setSortDir(key === "category" || key === "status" ? "asc" : "desc");
+      setSortDir(key === "category" || key === "status" || key === "live" ? "asc" : "desc");
     }
   }
 
-  const hasFilters = status !== "all" || category !== "all" || windowKey !== "all" || query.trim() !== "";
+  const hasFilters = status !== "all" || live !== "all" || category !== "all" || windowKey !== "all" || query.trim() !== "";
   function clearFilters() {
     setStatus("all");
+    setLive("all");
     setCategory("all");
     setWindowKey("all");
     setQuery("");
   }
 
-  const cols = "52px 88px 1.4fr 1.4fr 116px 60px 86px";
+  const cols = "52px 84px 1.2fr 1.2fr 132px 116px 54px 84px";
 
   return (
     <div>
@@ -570,6 +638,31 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
             </button>
           );
         })}
+      </div>
+
+      {/* Traffic-light legend — coarse "is it public?" read + one-click visibility filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Visibility</span>
+        {LIVE_ORDER.map((k) => {
+          const active = live === k;
+          const m = LIVE_META[k];
+          return (
+            <button
+              key={k}
+              onClick={() => setLive(active ? "all" : k)}
+              title={m.hint}
+              className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-bold transition-shadow hover:shadow-card"
+              style={{ borderColor: active ? m.color : "#E3EDEE", background: active ? m.soft : "#fff" }}
+            >
+              <TrafficLight state={k} size={6} />
+              <span style={{ color: m.color }}>{m.label}</span>
+              <span className="tnum rounded-full px-1.5 text-[11px] font-extrabold" style={{ background: m.soft, color: m.color }}>{liveCounts[k]}</span>
+            </button>
+          );
+        })}
+        {live !== "all" && (
+          <button onClick={() => setLive("all")} className="text-[12px] font-bold text-[#9DB1B5] hover:text-[#C0392B]">show all</button>
+        )}
       </div>
 
       {/* Toolbar — search + faceted filters */}
@@ -611,6 +704,7 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
             <Th>Token</Th>
             <SortHeader label="Type" col="category" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <Th>Authority</Th>
+            <SortHeader label="Live" col="live" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <SortHeader label="Status" col="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <SortHeader label="Age" col="age" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <SortHeader label="Date" col="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
@@ -619,18 +713,20 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
             const age = reportAgeDays(r);
             const ageColor = age >= 60 ? "#E74C3C" : age >= 7 ? "#E67E22" : "#1B8B4A";
             const authority = r.authority_name?.en ?? r.authority_name?.el;
-            const pending = r.status === "submitted";
+            const ls = liveState(r);
+            const lm = LIVE_META[ls];
             return (
               <button
                 key={r.id}
                 onClick={() => onOpen(r)}
                 className="grid w-full items-center border-b border-[#EEF4F4] text-left hover:bg-[#F4F8F9]"
-                style={{ gridTemplateColumns: cols, background: pending ? "#FFFDF7" : "#fff" }}
+                style={{ gridTemplateColumns: cols, background: lm.rowTint, boxShadow: `inset 4px 0 0 0 ${lm.color}` }}
               >
-                <div className="px-3.5 py-2"><AdminPhoto src={r.photo_url} className="h-9 w-9 rounded-lg" /></div>
+                <div className="py-2 pl-4 pr-3.5"><AdminPhoto src={r.photo_url} className="h-9 w-9 rounded-lg" /></div>
                 <div className="truncate px-3.5 py-2.5 font-mono text-[11px] font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[12px]" style={{ color: authority ? "#0B2B30" : "#C0392B" }}>{authority ?? "⚠ unrouted"}</div>
+                <div className="px-3.5 py-2.5"><LiveBadge state={ls} /></div>
                 <div className="flex items-center gap-1 px-3.5 py-2.5">
                   <StatusBadge status={r.status} />
                   {r.admin_hidden && <span className="text-[10px] font-bold text-[#9DB1B5]" title="Hidden from public">· hidden</span>}
@@ -726,6 +822,7 @@ function DetailView({
     <div>
       <div className="mb-3.5 flex items-center gap-3">
         <button onClick={onBack} className="text-[13px] font-bold text-[#00A6BC]">‹ Back to reports</button>
+        <LiveBadge state={liveState(report)} />
         <StatusBadge status={report.status} />
         {report.admin_hidden && (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F0F4F5] px-2.5 py-0.5 text-[11px] font-bold text-[#5B7378]">
