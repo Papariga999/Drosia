@@ -112,9 +112,17 @@
     "follow": "Verfolgen",
     "followSub": "Updates per Web-Push — kein E-Mail-Feld.",
     "followCta": "Ja",
-    "nearby": "4 weitere offene Reports in der Nähe",
+    "nearby": "Offene Meldungen in deiner Nähe ansehen",
     "pwa": "Drosia zum Homescreen hinzufügen",
     "again": "Neue Meldung"
+  },
+  "pending": {
+    "badge": "In Prüfung",
+    "title": "Meldung eingegangen",
+    "sub": "Wir anonymisieren das Foto und prüfen jede Meldung, bevor sie veröffentlicht und an die zuständige Behörde weitergeleitet wird.",
+    "keep": "Behalte diesen Link — er ist die dauerhafte Status-Seite deiner Meldung.",
+    "mapNote": "Bereits als ausstehender Pin auf der Karte — Foto & Details erscheinen, sobald das Drosia-Team die Meldung freigibt.",
+    "onMap": "Auf der Karte ansehen"
   },
   "share": {
     "anon": "Anonymisiertes Foto",

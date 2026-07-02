@@ -12,7 +12,7 @@ export type PublicReport = {
   category: ReportCategory;
   lat: number;
   lng: number;
-  status: "in_review" | "notified" | "resolved";
+  status: "submitted" | "in_review" | "notified" | "resolved";
   vote_count: number;
   confirm_count: number;
   created_at: string;
@@ -22,6 +22,8 @@ export type PublicReport = {
   place: string;
   /** Anonymized public photo URL (report-public bucket); undefined in mock/demo. */
   photo_url?: string;
+  /** Not yet approved/anonymized: shown as a pending pin only (no photo, no details). */
+  pending?: boolean;
 };
 
 const RHODES = { el: "Δήμος Ρόδου", en: "Municipality of Rhodes", de: "Gemeinde Rhodos" };

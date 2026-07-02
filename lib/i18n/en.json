@@ -112,9 +112,17 @@
     "follow": "Follow",
     "followSub": "Updates via Web-Push — no email.",
     "followCta": "Yes",
-    "nearby": "4 more open reports near you",
+    "nearby": "See open reports near you",
     "pwa": "Add Drosia to your home screen",
     "again": "New report"
+  },
+  "pending": {
+    "badge": "In review",
+    "title": "Report received",
+    "sub": "We anonymize the photo and review every report before it goes public and is forwarded to the responsible authority.",
+    "keep": "Keep this link — it's your report's permanent status page.",
+    "mapNote": "Already on the map as a pending pin — photo & details appear once the Drosia team approves the report.",
+    "onMap": "See it on the map"
   },
   "share": {
     "anon": "Anonymized photo",

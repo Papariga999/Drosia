@@ -149,17 +149,25 @@ function ReportPreview({ report }: { report: PublicReport }) {
           <div className="photo-placeholder h-[88px] w-[88px] flex-none rounded-[14px]" />
         )}
         <div className="flex-1">
-          <span
-            className="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
-            style={{ color: severityColor(days), background: "var(--surface)" }}
-          >
-            {days} {dict.severity.days}
-          </span>
+          {report.pending ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 text-[11px] font-bold text-primary-ink">
+              ⏳ {dict.pending.badge}
+            </span>
+          ) : (
+            <span
+              className="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
+              style={{ color: severityColor(days), background: "var(--surface)" }}
+            >
+              {days} {dict.severity.days}
+            </span>
+          )}
           <div className="mt-1.5 font-display text-[16px] font-black">
             {meta.emoji} {categoryLabel(report.category, locale)}
           </div>
           <div className="mt-0.5 text-[12px] text-slate">
-            {report.authority_name[locale] || "-"} · {report.vote_count}
+            {report.pending
+              ? dict.pending.title
+              : `${report.authority_name[locale] || "-"} · ${report.vote_count}`}
           </div>
         </div>
       </div>

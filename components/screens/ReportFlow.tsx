@@ -165,6 +165,7 @@ export function ReportFlow() {
     return (
       <SuccessView
         token={token}
+        photoUrl={previews[0] ?? null}
         onRestart={() => {
           setStep(1);
           setFiles([]);
@@ -440,7 +441,17 @@ function StepTitle({ title, sub }: { title: string; sub: string }) {
   );
 }
 
-function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: () => void; onMap: () => void }) {
+function SuccessView({
+  token,
+  photoUrl,
+  onRestart,
+  onMap,
+}: {
+  token: string;
+  photoUrl: string | null;
+  onRestart: () => void;
+  onMap: () => void;
+}) {
   const { dict } = useLocale();
 
   // Client-only view (rendered after submit), so window is available.
@@ -468,7 +479,15 @@ function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: ()
       {/* ShareCard prominent */}
       <div className="mt-4 overflow-hidden rounded-[18px] text-left shadow-card">
         <div className="flex items-center gap-3 bg-primary p-4 text-white">
-          <PhotoPlaceholder className="h-[60px] w-[60px] flex-none rounded-xl" />
+          {/* The reporter's own local preview (never uploaded to a public
+              surface here) — the shared /r/ page shows only the anonymized
+              variant once published. */}
+          {photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photoUrl} alt="" className="h-[60px] w-[60px] flex-none rounded-xl object-cover" />
+          ) : (
+            <PhotoPlaceholder className="h-[60px] w-[60px] flex-none rounded-xl" />
+          )}
           <div className="flex-1">
             <div className="font-display text-[15px] font-black">{dict.success.shareTitle}</div>
             <div className="text-[12px] opacity-90">{dict.success.shareSub}</div>

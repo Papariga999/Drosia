@@ -138,7 +138,11 @@ export function DrosiaMap({
       overlaysRef.current = [];
 
       if (mode === "heat") {
-        overlaysRef.current.push(...mappedReports.map((report) => addHeatCircle(L, map, report)));
+        // Heat visualizes severity of PUBLISHED reports; pending pins have no
+        // votes/verified age semantics yet, so they stay out of this mode.
+        overlaysRef.current.push(
+          ...mappedReports.filter((report) => !report.pending).map((report) => addHeatCircle(L, map, report)),
+        );
       } else {
         overlaysRef.current.push(
           ...mappedReports.map((report) =>
@@ -221,16 +225,23 @@ function addReportMarker(
   onClick: () => void,
 ): Marker {
   const days = reportAgeDays(report);
-  const color = report.status === "resolved" ? "var(--success)" : severityColor(days);
+  // Pending (not yet approved/anonymized): neutral gray + hourglass, so it
+  // reads as "received, in review" rather than a severity-rated open report.
+  const color = report.pending
+    ? "var(--muted)"
+    : report.status === "resolved"
+      ? "var(--success)"
+      : severityColor(days);
+  const label = report.pending ? "⏳" : String(days);
   const marker = L.marker([report.lat, report.lng], {
     icon: L.divIcon({
       className: "drosia-leaflet-marker",
-      html: pinHtml(color, String(days), selected),
+      html: pinHtml(color, label, selected),
       iconSize: [46, 54],
       iconAnchor: [23, 50],
     }),
     keyboard: true,
-    title: String(days),
+    title: label,
   });
 
   marker.on("click keypress", onClick);
