@@ -11,7 +11,9 @@ const isProd = process.env.NODE_ENV === "production";
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
-  { key: "Referrer-Policy", value: "no-referrer" }, // device/report tokens travel in URLs
+  // Cross-origin requests (map tiles, fonts, etc.) receive only the site origin,
+  // not report/device-token paths. OSM tiles reject requests with no Referer.
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(self), geolocation=(self), microphone=()" },
   // HSTS only in production (Vercel serves HTTPS); avoid pinning localhost.
   ...(isProd
