@@ -1,0 +1,290 @@
+{
+  "generated_at": "2026-07-02",
+  "research_window": {
+    "from": "2025-07-02",
+    "to": "2026-07-02",
+    "scope": "Local Greek environmental news and media-reported environmental-law incidents"
+  },
+  "import_guard": {
+    "classification": "news_derived_report_leads",
+    "not_citizen_submissions": true,
+    "recommendation": "Import only after admin review. Keep excluded_from_ranking=true until the issue has been independently verified and delivered through Drosia's authority workflow.",
+    "source_retention": "The current reports table has no source_url/source_type fields. Preserve source_urls in an admin note, sidecar table, or future report_sources table before production import.",
+    "photo_policy": "Do not reuse media photos unless licensed. Use field verification photos or licensed images, then run the normal server-side anonymization pipeline before public display.",
+    "privacy_policy": "Do not name suspects, private persons, or private parcels in public copy. Use approximate public-area pins when an article points to private land."
+  },
+  "reports": [
+    {
+      "id": "gr-news-2026-07-02-halkidiki-vergia-informal-dump",
+      "title": "Informal dump with construction and mixed waste near Vergia",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Nea Propontida",
+        "level": "municipality"
+      },
+      "category": "construction_waste",
+      "location": {
+        "label": "Vergia, Halkidiki",
+        "lat": 40.297529,
+        "lng": 23.122413,
+        "precision": "named_place_centroid",
+        "precision_m": 1500
+      },
+      "incident_date": "2026-07-01",
+      "reported_window": "Waste reportedly deposited gradually since 2025-10.",
+      "description": "Media lead from ERTnews and Proto Thema: police reported large volumes of construction/demolition and mixed solid waste near Vergia, Halkidiki, connected to informal dumping. Needs field verification and an anonymized/licensed photo before public promotion.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/roi-idiseon/xalkidiki-synelifthi-ep-aytoforo-59xronos-gia-rypansi-perivallontos/",
+        "https://www.protothema.gr/greece/article/1844407/halkidiki-sunelifthi-ep-autoforo-59hronos-gia-paranomi-aporripsi-bazon-eihe-ftiaxei-atupes-homateres/AMP/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-07-02-halkidiki-nea-silata-informal-dump",
+      "title": "Informal dump with mixed solid waste near Nea Silata",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Nea Propontida",
+        "level": "municipality"
+      },
+      "category": "bulky",
+      "location": {
+        "label": "Nea Silata, Halkidiki",
+        "lat": 40.329749,
+        "lng": 23.132835,
+        "precision": "named_place_centroid",
+        "precision_m": 1500
+      },
+      "incident_date": "2026-07-01",
+      "reported_window": "Waste reportedly deposited gradually since 2025-10.",
+      "description": "Media lead from ERTnews and Proto Thema: the second named Halkidiki site was reported around Nea Silata, with mixed solid waste including wood, mattresses, plastics, and old furniture. Verify the site and avoid exposing any private parcel.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/roi-idiseon/xalkidiki-synelifthi-ep-aytoforo-59xronos-gia-rypansi-perivallontos/",
+        "https://www.protothema.gr/greece/article/1844407/halkidiki-sunelifthi-ep-autoforo-59hronos-gia-paranomi-aporripsi-bazon-eihe-ftiaxei-atupes-homateres/AMP/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-06-13-koufalia-construction-waste-loads",
+      "title": "Construction and demolition waste dumping in rural Koufalia",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Chalkidona",
+        "level": "municipality"
+      },
+      "category": "construction_waste",
+      "location": {
+        "label": "Koufalia, Thessaloniki regional unit",
+        "lat": 40.778644,
+        "lng": 22.577562,
+        "precision": "named_place_centroid",
+        "precision_m": 2500
+      },
+      "incident_date": "2026-06-12",
+      "reported_window": "Reported activity over approximately the previous 20 days.",
+      "description": "Media lead from ERTnews: police reported uncontrolled backfilling/dumping of construction and demolition waste in rural areas of Koufalia, part of a case involving 56 loads across Thessaloniki and Pella. Verify exact location before import.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/ert3/petaksan-56-fortia-me-apovlita-se-agrotikes-perioxes-se-thessaloniki-kai-pella-pente-syllipseis/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-06-13-athyra-construction-waste-loads",
+      "title": "Construction and demolition waste dumping in rural Athyra",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Pella",
+        "level": "municipality"
+      },
+      "category": "construction_waste",
+      "location": {
+        "label": "Athyra, Pella regional unit",
+        "lat": 40.825304,
+        "lng": 22.591014,
+        "precision": "named_place_centroid",
+        "precision_m": 2500
+      },
+      "incident_date": "2026-06-12",
+      "reported_window": "Reported activity over approximately the previous 20 days.",
+      "description": "Media lead from ERTnews: the same 56-load construction/demolition waste case included uncontrolled dumping in rural Athyra, Pella. Treat as a separate map report because it routes to a different municipality.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/ert3/petaksan-56-fortia-me-apovlita-se-agrotikes-perioxes-se-thessaloniki-kai-pella-pente-syllipseis/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-06-18-nikiti-agia-varvara-sewage",
+      "title": "Untreated sewage reached the sea at Agia Varvara, Nikiti",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Sithonia",
+        "level": "municipality"
+      },
+      "category": "sewage",
+      "location": {
+        "label": "Agia Varvara, Nikiti, Halkidiki",
+        "lat": 40.2214,
+        "lng": 23.6581,
+        "precision": "named_beach_area",
+        "precision_m": 1200
+      },
+      "incident_date": "2026-06-18",
+      "reported_window": "Reported as a short-duration failure of the biological treatment system.",
+      "description": "Media lead from ERTnews: untreated sewage reportedly reached the sea at Agia Varvara, Nikiti, after a double failure at the biological treatment plant; the water color visibly changed and swimming was banned. Requires current water-status verification.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/ert3/xalkidiki-apagoreysi-kolymvisis-sti-nikiti-meta-apo-diarroi-lymaton-sti-thalassa/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-06-12-pefkochori-akrotiri-sewage-leak",
+      "title": "Sewage pipe break at Akrotiri beach, Pefkochori",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Kassandra",
+        "level": "municipality"
+      },
+      "category": "sewage",
+      "location": {
+        "label": "Akrotiri beach, Pefkochori, Halkidiki",
+        "lat": 39.988173,
+        "lng": 23.623699,
+        "precision": "named_beach_area",
+        "precision_m": 800
+      },
+      "incident_date": "2026-06-12",
+      "reported_window": "Reported on 2026-06-12 after an overnight leak.",
+      "description": "Media lead from ERTnews: a sewage transfer pipe break at Akrotiri beach, Pefkochori, reportedly sent untreated sewage to the sea; swimming was banned 200 m on both sides pending water tests. Verify whether the ban remains active.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/ert3/diarroi-lymaton-stin-paralia-akrotiri-tis-xalkidikis/"
+      ]
+    },
+    {
+      "id": "gr-news-2025-09-27-agistri-waste-to-sea",
+      "title": "Liquid and solid waste reportedly dumped toward the sea on Agistri",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Agistri",
+        "level": "municipality"
+      },
+      "category": "sewage",
+      "location": {
+        "label": "Agistri island",
+        "lat": 37.693704,
+        "lng": 23.350052,
+        "precision": "island_centroid_from_article_area",
+        "precision_m": 4000
+      },
+      "incident_date": "2025-09-26",
+      "reported_window": "Reported arrests on 2025-09-26.",
+      "description": "Media lead from ERTnews: police reported liquid and solid waste being transported and dumped at points ending in the sea on Agistri, including liquid waste from trucks and construction waste on a steep slope. Needs exact public-safe pin verification.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/eidiseis/ellada/agkistri-pente-syllipseis-gia-paranomi-aporripsi-apovliton-sti-thalassa/"
+      ]
+    },
+    {
+      "id": "gr-news-2025-08-14-milos-fryligkos-illegal-landfill",
+      "title": "Illegal landfill report at Fryligkos, Milos",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Milos",
+        "level": "municipality"
+      },
+      "category": "illegal_dump",
+      "location": {
+        "label": "Fryligkos area, Milos",
+        "lat": 36.744304,
+        "lng": 24.423067,
+        "precision": "municipality_centroid_pending_geocoding",
+        "precision_m": 6000
+      },
+      "incident_date": "2025-08-12",
+      "reported_window": "Reported after a complaint about an illegal landfill.",
+      "description": "Media lead from ERTnews: police reported municipal garbage trucks depositing solid urban waste at Fryligkos, Milos, outside the defined uncontrolled disposal area. Exact site geocoding is required before public map use.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/perifereiakoi-stathmoi/notio_aigaio/milos-synelifthisan-17-atoma-gia-perivallontiki-rypansi-katigorountai-oti-enapothetan-skoupidia-se-paranomi-xomateri/"
+      ]
+    },
+    {
+      "id": "gr-news-2025-10-29-filippiada-louros-animal-waste",
+      "title": "Animal and food waste reportedly buried near the Louros river",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Ziros",
+        "level": "municipality"
+      },
+      "category": "sewage",
+      "location": {
+        "label": "Filippiada / Louros river area, Preveza",
+        "lat": 39.205348,
+        "lng": 20.882992,
+        "precision": "town_area_near_reported_river_site",
+        "precision_m": 5000
+      },
+      "incident_date": "2025-10-24",
+      "reported_window": "Reported on 2025-10-29; waste was said to have been unloaded the previous Friday.",
+      "description": "Media lead from ERTnews: more than 200 tons of animal and food waste from a Corfu fire cleanup were reportedly buried without authorization beside the Louros river near Filippiada. Use a public-area pin until the exact site is legally safe to show.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/roi-idiseon/preveza-xoris-adeia-dipla-ston-potamo-louro-entafiastikan-ta-apovlita-apo-tin-kerkyra-apokleistika-plana-ertnews/"
+      ]
+    },
+    {
+      "id": "gr-news-2026-02-15-aspropyrgos-hazardous-waste",
+      "title": "Hazardous e-waste and oil contamination in Aspropyrgos",
+      "country_code": "GR",
+      "authority_guess": {
+        "name_en": "Municipality of Aspropyrgos",
+        "level": "municipality"
+      },
+      "category": "sewage",
+      "location": {
+        "label": "Aspropyrgos, West Attica",
+        "lat": 38.081056,
+        "lng": 23.604274,
+        "precision": "municipality_centroid_private_business_not_exposed",
+        "precision_m": 5000
+      },
+      "incident_date": "2026-02-11",
+      "reported_window": "Reported arrest on 2026-02-15 after inspection on 2026-02-11.",
+      "description": "Media lead from ERTnews: inspection at a used-vehicle business in Aspropyrgos reportedly found electrical-equipment waste and lubricating oils on soil, causing environmental burden. Keep exact business details out of public copy.",
+      "recommended_status": "submitted",
+      "excluded_from_ranking": true,
+      "requires_admin_verification": true,
+      "requires_photo": true,
+      "source_urls": [
+        "https://www.ertnews.gr/eidiseis/synelifthi-43xroni-ston-aspropyrgo-gia-rypansi-perivallontos-me-epikindyna-apovlita/"
+      ]
+    }
+  ]
+}
