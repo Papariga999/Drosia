@@ -2030,6 +2030,7 @@ interface WebAnalytics {
     sources: { label: string; views: number }[];
     countries: { label: string; views: number }[];
     devices: { label: string; views: number }[];
+    languages: { label: string; views: number }[];
     top_reports: { label: string; views: number }[];
     prev: { pageviews: number; sessions: number; report_views: number };
   };
@@ -2183,8 +2184,13 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
 
           <div className="grid grid-cols-2 gap-3">
             <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" />
-            <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono />
+            <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono hrefFor={(token) => `/r/${token}`} />
             <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" />
+            <BreakdownCard
+              title="Languages"
+              rows={(web?.languages ?? []).map((r) => ({ ...r, label: LANGUAGE_LABELS[r.label] ?? r.label }))}
+              empty="No data yet"
+            />
             <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" />
           </div>
         </>
@@ -2425,7 +2431,10 @@ function FunnelRow({ steps }: { steps: { label: string; value: number; color: st
   );
 }
 
-function BreakdownCard({ title, rows, empty, mono }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean }) {
+/** UI-language codes → English names for the admin-only "Languages" breakdown. */
+const LANGUAGE_LABELS: Record<string, string> = { el: "Greek", en: "English", de: "German", "?": "Unknown" };
+
+function BreakdownCard({ title, rows, empty, mono, hrefFor }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean; hrefFor?: (label: string) => string }) {
   const max = Math.max(1, ...rows.map((r) => r.views));
   return (
     <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
@@ -2434,15 +2443,30 @@ function BreakdownCard({ title, rows, empty, mono }: { title: string; rows: { la
         <div className="text-[12px] text-[#9DB1B5]">{empty}</div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {rows.map((r) => (
-            <div key={r.label} className="flex items-center gap-2">
-              <div className={`w-[150px] truncate text-[12px] text-[#3F5F64] ${mono ? "font-mono" : "font-bold"}`} title={r.label}>{r.label}</div>
-              <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
-                <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.views / max) * 100}%` }} />
+          {rows.map((r) => {
+            const labelClass = `w-[150px] truncate text-[12px] ${mono ? "font-mono" : "font-bold"}`;
+            return (
+              <div key={r.label} className="flex items-center gap-2">
+                {hrefFor ? (
+                  <a
+                    href={hrefFor(r.label)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${labelClass} text-[#0E7C86] hover:underline`}
+                    title={`Open report ${r.label} in a new tab`}
+                  >
+                    {r.label}
+                  </a>
+                ) : (
+                  <div className={`${labelClass} text-[#3F5F64]`} title={r.label}>{r.label}</div>
+                )}
+                <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
+                  <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.views / max) * 100}%` }} />
+                </div>
+                <div className="tnum w-[44px] text-right text-[12px] font-bold text-[#0B2B30]">{r.views}</div>
               </div>
-              <div className="tnum w-[44px] text-right text-[12px] font-bold text-[#0B2B30]">{r.views}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
