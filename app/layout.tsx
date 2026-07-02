@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   applicationName: "Drosia",
 };
 
+// Every route renders per request: the CSP script nonce (middleware.ts) is
+// minted per request, and statically prerendered HTML cannot carry one — its
+// inline bootstrap scripts would be blocked. Applies app-wide from here.
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: {

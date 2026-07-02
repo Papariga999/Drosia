@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { ensureKnownDevice } from "@/lib/anon-device";
 
 export const runtime = "nodejs";
 
@@ -45,6 +46,16 @@ export async function POST(req: Request): Promise<Response> {
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "Validation failed." }, { status: 400 });
   const { deviceToken, subscription, areaAuthorityId } = parsed.data;
+
+  // Same identity gate as /api/vote: junk subscriptions require burning the
+  // per-IP new-device budget, not just the request rate limit.
+  const device = await ensureKnownDevice(deviceToken, ip);
+  if (!device.ok) {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "Retry-After": String(device.retryAfterSeconds) } },
+    );
+  }
 
   const { error } = await getSupabaseAdmin()
     .from("push_subscriptions")

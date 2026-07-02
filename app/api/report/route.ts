@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { registerDevice } from "@/lib/anon-device";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
 import { reportFieldsSchema, validatePhotos, MAX_PHOTOS, type ReportFields } from "@/lib/report-intake";
 
@@ -160,6 +161,9 @@ export async function POST(req: Request): Promise<Response> {
     const reportToken = token;
     after(async () => {
       try {
+        // A reporter's device becomes vote-eligible without touching the per-IP
+        // new-device budget — submitting is already the expensive action.
+        await registerDevice(fields.authorToken);
         const { data: row } = await admin
           .from("reports")
           .select("id")

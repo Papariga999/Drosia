@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { ensureKnownDevice } from "@/lib/anon-device";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,18 @@ export async function POST(req: Request): Promise<Response> {
   if (!parsed.success) return NextResponse.json({ error: "Validation failed." }, { status: 400 });
   const { token, type, voterToken, website } = parsed.data;
   if (website) return NextResponse.json({ error: "Invalid." }, { status: 400 });
+
+  // Anti-inflation gate: the voter token must be a registered device. New
+  // devices register here, but against a strict per-IP identity budget — so
+  // minting a fresh token per vote no longer turns the vote limit into a
+  // fake-vote budget (see lib/anon-device.ts).
+  const device = await ensureKnownDevice(voterToken, ip);
+  if (!device.ok) {
+    return NextResponse.json(
+      { error: "Too many votes." },
+      { status: 429, headers: { "Retry-After": String(device.retryAfterSeconds) } },
+    );
+  }
 
   const admin = getSupabaseAdmin();
   const { data: report } = await admin
