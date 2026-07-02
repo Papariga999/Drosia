@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -18,7 +19,9 @@ function n(v: unknown): number {
 export async function GET(req: Request): Promise<Response> {
   const secret = process.env.CRON_SECRET || process.env.WEBHOOK_SECRET;
   const auth = req.headers.get("authorization") ?? "";
-  if (!secret || auth !== `Bearer ${secret}`) {
+  const expected = Buffer.from(`Bearer ${secret ?? ""}`);
+  const got = Buffer.from(auth);
+  if (!secret || expected.length !== got.length || !timingSafeEqual(expected, got)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

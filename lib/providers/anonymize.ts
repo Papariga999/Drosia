@@ -91,7 +91,14 @@ class HttpAnonymizer implements ImageAnonymizer {
       if (process.env.ANONYMIZER_API_KEY) {
         headers.authorization = `Bearer ${process.env.ANONYMIZER_API_KEY}`;
       }
-      const res = await fetch(endpoint, { method: "POST", headers, body: form });
+      // Bounded wait: a hung anonymizer must fail (retryable via re-approve),
+      // not stall the serverless function until the platform kills it.
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: form,
+        signal: AbortSignal.timeout(30_000),
+      });
       if (!res.ok) return { publicPath: "", status: "failed" };
       // Re-encode through sharp: strips metadata and guarantees a valid JPEG.
       const out = await sharp(Buffer.from(await res.arrayBuffer())).jpeg({ quality: 82 }).toBuffer();

@@ -31,6 +31,9 @@ function verifyBearer(req: Request): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Svix tolerance: reject signed payloads older/newer than 5 minutes (replay guard). */
+const SVIX_TOLERANCE_SECONDS = 5 * 60;
+
 /** Manual Svix verification (no extra dependency). */
 function verifySvix(req: Request, rawBody: string): boolean {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
@@ -39,6 +42,11 @@ function verifySvix(req: Request, rawBody: string): boolean {
   const timestamp = req.headers.get("svix-timestamp");
   const signatureHeader = req.headers.get("svix-signature");
   if (!id || !timestamp || !signatureHeader) return false;
+
+  // A valid signature over a stale timestamp is a replay, not a delivery event.
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - ts) > SVIX_TOLERANCE_SECONDS) return false;
 
   const key = Buffer.from(secret.replace(/^whsec_/, ""), "base64");
   const signedContent = `${id}.${timestamp}.${rawBody}`;

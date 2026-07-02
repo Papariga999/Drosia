@@ -11,8 +11,15 @@ import { LOCALES } from "./i18n";
  */
 export const MAX_DESCRIPTION = 500;
 export const MAX_PHOTOS = 3;
-export const MAX_PHOTO_BYTES = 12 * 1024 * 1024; // 12 MB per original
-export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+// Vercel rejects request bodies over ~4.5 MB, so the real budget is the TOTAL
+// payload, not sharp's abilities. The client compresses photos to ~a few hundred
+// KB each (lib/compress-image.ts) — these caps are the defensive server bound
+// for direct-API/non-JS clients.
+export const MAX_PHOTO_BYTES = 4 * 1024 * 1024; // 4 MB per photo
+export const MAX_TOTAL_UPLOAD_BYTES = 4 * 1024 * 1024; // 4 MB per request (Vercel headroom)
+// No HEIC/HEIF: the prebuilt sharp binary cannot decode them — accepting them
+// here would 500 mid-pipeline. iOS photos arrive as JPEG via client compression.
+export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export const reportFieldsSchema = z.object({
   lat: z.coerce.number().finite().min(-90).max(90),
@@ -47,11 +54,16 @@ export interface PhotoLike {
 export function validatePhotos(photos: PhotoLike[]): { ok: true } | { ok: false; error: string } {
   if (photos.length < 1) return { ok: false, error: "At least one photo is required" };
   if (photos.length > MAX_PHOTOS) return { ok: false, error: `At most ${MAX_PHOTOS} photos allowed` };
+  let total = 0;
   for (const p of photos) {
-    if (p.size > MAX_PHOTO_BYTES) return { ok: false, error: "Photo exceeds size limit (12 MB)" };
+    total += p.size;
+    if (p.size > MAX_PHOTO_BYTES) return { ok: false, error: "Photo exceeds size limit (4 MB)" };
     if (p.type && !ACCEPTED_IMAGE_TYPES.includes(p.type)) {
       return { ok: false, error: `Unsupported image type: ${p.type}` };
     }
+  }
+  if (total > MAX_TOTAL_UPLOAD_BYTES) {
+    return { ok: false, error: "Photos exceed the combined upload limit (4 MB)" };
   }
   return { ok: true };
 }

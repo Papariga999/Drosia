@@ -113,6 +113,10 @@ end $$;
 -- later. Additive + idempotent; defaults to visible.
 alter table reports add column if not exists admin_hidden boolean not null default false;
 
+-- Moderation audit: why a report was rejected ('private_person' | 'spam_invalid'
+-- | 'out_of_scope' | 'dsa_takedown'; validated in the route). Additive + idempotent.
+alter table reports add column if not exists reject_reason text;
+
 -- Photos: original (private) + anonymized public variant.
 create table if not exists report_photos (
   id            uuid primary key default gen_random_uuid(),
@@ -631,6 +635,169 @@ end;
 $$;
 revoke all on function rate_limit_hit(text, integer, bigint) from public;
 revoke all on function rate_limit_hit(text, integer, bigint) from anon, authenticated;
+
+-- ── Cookieless first-party web analytics ────────────────────────────────────
+-- /api/track ingests events WITHOUT storing the IP (coarse country only, random
+-- session id, bots dropped). Raw events roll up into web_events_daily and are
+-- purged after 180 days by web_events_maintenance(). Service-role only (RLS on,
+-- no anon policies; the admin_* RPCs below are revoked from anon/authenticated).
+create table if not exists web_events (
+  id           uuid primary key default gen_random_uuid(),
+  event        text not null default 'pageview',
+  path         text,
+  report_token text,
+  source       text,
+  country      text,          -- coarse ISO country from the edge header; never the IP
+  device       text,          -- 'mobile' | 'desktop' (bots are dropped at ingest)
+  sid          text,          -- random session-scoped id, NOT an identity
+  locale       text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_web_events_created on web_events (created_at);
+create index if not exists idx_web_events_report  on web_events (report_token) where report_token is not null;
+create index if not exists idx_web_events_event   on web_events (event);
+alter table web_events enable row level security;
+
+create table if not exists web_events_daily (
+  day          date primary key,
+  pageviews    integer not null default 0,
+  sessions     integer not null default 0,
+  report_views integer not null default 0
+);
+alter table web_events_daily enable row level security;
+
+-- Roll raw events up into daily aggregates and purge raw rows older than the
+-- 180-day retention window. Called opportunistically from /api/track (no cron).
+create or replace function web_events_maintenance()
+returns void
+language plpgsql
+as $$
+begin
+  insert into web_events_daily (day, pageviews, sessions, report_views)
+  select created_at::date,
+         count(*) filter (where event = 'pageview'),
+         count(distinct sid),
+         count(*) filter (where event = 'pageview' and report_token is not null)
+  from web_events
+  group by created_at::date
+  on conflict (day) do update
+    set pageviews = excluded.pageviews,
+        sessions = excluded.sessions,
+        report_views = excluded.report_views;
+  delete from web_events where created_at < now() - interval '180 days';
+end; $$;
+revoke all on function web_events_maintenance() from public;
+revoke all on function web_events_maintenance() from anon, authenticated;
+
+-- Traffic + report-funnel aggregate for the admin dashboard (and weekly digest).
+create or replace function admin_web_analytics(p_days integer default 30)
+returns jsonb
+language sql
+stable
+as $$
+with d as (select greatest(1, least(coalesce(p_days,30),365)) as days),
+b as (select now() - ((select days from d) || ' days')::interval as since,
+             now() - ((2*(select days from d)) || ' days')::interval as prev_since),
+ev  as (select e.* from web_events e, b where e.created_at >= b.since),
+evp as (select e.* from web_events e, b where e.created_at >= b.prev_since and e.created_at < b.since),
+series as (select gs::date as day from generate_series((current_date - ((select days from d)-1))::timestamp, current_date::timestamp, interval '1 day') gs),
+ts as (select s.day, count(e.id) filter (where e.event='pageview') as pageviews, count(distinct e.sid) as sessions
+       from series s left join ev e on e.created_at::date = s.day group by s.day)
+select jsonb_build_object(
+  'days',(select days from d),
+  'web', jsonb_build_object(
+    'pageviews',(select count(*) from ev where event='pageview'),
+    'sessions',(select count(distinct sid) from ev),
+    'report_views',(select count(*) from ev where event='pageview' and report_token is not null),
+    'timeseries',(select coalesce(jsonb_agg(jsonb_build_object('day',day,'pageviews',pageviews,'sessions',sessions) order by day),'[]'::jsonb) from ts),
+    'sources',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(source,'direct'),'views',count(*)) j from ev where event='pageview' group by coalesce(source,'direct') order by count(*) desc limit 8) x),
+    'countries',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(country,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(country,'?') order by count(*) desc limit 8) x),
+    'devices',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(device,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(device,'?') order by count(*) desc) x),
+    'top_reports',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',report_token,'views',count(*)) j from ev where event='pageview' and report_token is not null group by report_token order by count(*) desc limit 8) x),
+    'prev', jsonb_build_object(
+      'pageviews',(select count(*) from evp where event='pageview'),
+      'sessions',(select count(distinct sid) from evp),
+      'report_views',(select count(*) from evp where event='pageview' and report_token is not null))
+  ),
+  'funnel', jsonb_build_object(
+    'sessions',(select count(distinct sid) from ev),
+    'report_start',(select count(distinct sid) from ev where event='report_start'),
+    'photo_added',(select count(distinct sid) from ev where event='photo_added'),
+    'geolocate',(select count(distinct sid) from ev where event='geolocate'),
+    'submit_success',(select count(distinct sid) from ev where event='submit_success'),
+    'submit_fail',(select count(distinct sid) from ev where event='submit_fail')),
+  'reports', jsonb_build_object(
+    'submitted_in_range',(select count(*) from reports r,b where r.is_test=false and r.created_at>=b.since),
+    'submitted_prev',(select count(*) from reports r,b where r.is_test=false and r.created_at>=b.prev_since and r.created_at<b.since),
+    'notified',(select count(*) from reports r,b where r.is_test=false and r.notified_at>=b.since),
+    'resolved',(select count(*) from reports r,b where r.is_test=false and r.resolved_at>=b.since),
+    'by_status',(select coalesce(jsonb_object_agg(status,c),'{}'::jsonb) from (select status::text as status, count(*) c from reports where is_test=false group by status) x))
+);
+$$;
+revoke all on function admin_web_analytics(integer) from public;
+revoke all on function admin_web_analytics(integer) from anon, authenticated;
+
+-- Civic-outcome reporting (categories, authorities, resolution times, delivery
+-- health, rejections, map points) from existing report data. No test data.
+create or replace function admin_report_analytics(p_days integer default 90)
+returns jsonb
+language sql
+stable
+as $$
+with d as (select greatest(1, least(coalesce(p_days,90),3650)) as days),
+b as (select now() - ((select days from d) || ' days')::interval as since),
+r as (select rep.* from reports rep, b where rep.is_test=false and rep.created_at >= b.since)
+select jsonb_build_object(
+  'days',(select days from d),
+  'totals', jsonb_build_object('reports',(select count(*) from r),
+    'by_status',(select coalesce(jsonb_object_agg(status,c),'{}'::jsonb) from (select status::text status,count(*) c from r group by status) x)),
+  'by_category',(select coalesce(jsonb_agg(j order by cnt desc),'[]'::jsonb) from (
+     select jsonb_build_object('label',category::text,'count',count(*),'resolved',count(*) filter(where status='resolved')) j,count(*) cnt from r group by category) x),
+  'by_authority',(select coalesce(jsonb_agg(j order by cnt desc),'[]'::jsonb) from (
+     select jsonb_build_object('label',coalesce(a.name_i18n->>'en',a.name_i18n->>'el','—'),'count',count(*),'resolved',count(*) filter(where r2.status='resolved')) j,count(*) cnt
+     from r r2 join authorities a on a.id=r2.authority_id group by a.id,a.name_i18n order by count(*) desc limit 10) x),
+  'resolution', jsonb_build_object(
+     'median_notify_hours',(select percentile_cont(0.5) within group (order by extract(epoch from (notified_at-created_at))/3600.0) from r where notified_at is not null),
+     'median_resolve_hours',(select percentile_cont(0.5) within group (order by extract(epoch from (resolved_at-notified_at))/3600.0) from r where resolved_at is not null and notified_at is not null),
+     'notified',(select count(*) from r where notified_at is not null),
+     'resolved',(select count(*) from r where status='resolved')),
+  'delivery',(select jsonb_build_object('total',count(*),'delivered',count(*) filter(where status='delivered'),'sent',count(*) filter(where status='sent'),
+     'bounced',count(*) filter(where status='bounced'),'failed',count(*) filter(where status='failed'),'complained',count(*) filter(where status='complained'))
+     from delivery_logs dl,b where dl.created_at>=b.since),
+  'rejections', jsonb_build_object('total',(select count(*) from r where status='rejected'),
+     'by_reason',(select coalesce(jsonb_agg(j order by cnt desc),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(reject_reason,'unspecified'),'count',count(*)) j,count(*) cnt from r where status='rejected' group by reject_reason) y)),
+  'points',(select coalesce(jsonb_agg(jsonb_build_object('lat',st_y(geom::geometry),'lng',st_x(geom::geometry),'status',status::text)),'[]'::jsonb)
+            from (select geom,status from r where geom is not null limit 500) z));
+$$;
+revoke all on function admin_report_analytics(integer) from public;
+revoke all on function admin_report_analytics(integer) from anon, authenticated;
+
+-- Per-report engagement stats (views + votes) for the admin report detail.
+create or replace function admin_report_stats(p_token text)
+returns jsonb
+language sql
+stable
+as $$
+  select jsonb_build_object(
+    'views',(select count(*) from web_events where report_token=p_token and event='pageview'),
+    'priority',(select count(*) from report_votes v join reports rr on rr.id=v.report_id where rr.public_token=p_token and v.type='priority'),
+    'still_here',(select count(*) from report_votes v join reports rr on rr.id=v.report_id where rr.public_token=p_token and v.type='still_here'));
+$$;
+revoke all on function admin_report_stats(text) from public;
+revoke all on function admin_report_stats(text) from anon, authenticated;
+
+-- ── Operator task list (admin board “Tasks” tab; service-role only) ─────────
+create table if not exists admin_tasks (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  details    text,
+  status     text not null default 'open',      -- 'open' | 'done'
+  priority   text not null default 'p2',        -- 'p0' | 'p1' | 'p2'
+  category   text not null default 'task',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table admin_tasks enable row level security;
 
 -- ── Storage buckets (originals private, public anonymized) ──────────────────
 -- We only create the buckets. We deliberately do NOT touch storage.objects:

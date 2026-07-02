@@ -83,14 +83,23 @@ class EmailDeliverer implements ReportDeliverer {
 
     const url = reportUrl(input.reportToken);
     const { subject, text } = emailBody(input.locale, input.category, url);
-    // Only a real Resend key (re_…) triggers a live send; empty/placeholder/invalid
-    // values fall back to dev-mode so a forgotten placeholder can't break delivery.
+    // Only a real Resend key (re_…) triggers a live send.
     const rawKey = process.env.RESEND_API_KEY;
     const apiKey = rawKey && rawKey.startsWith("re_") ? rawKey : null;
     const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
 
     if (!apiKey) {
-      // Dev mode — no network, log so the loop is observable + testable.
+      // Production: a missing/placeholder key MUST surface as a FAILED delivery
+      // (delivery_logs 'failed', report stays in_review) — a fake 'sent' would
+      // advance the report to 'notified' and feed the accountability ranking
+      // with mail no authority ever received (P0: never a silent failure).
+      if (process.env.NODE_ENV === "production") {
+        return {
+          status: "failed",
+          error: "RESEND_API_KEY missing or not a re_… key — email NOT sent. Configure Resend, then use 'Notify now' / resend.",
+        };
+      }
+      // Local dev only — no network, log so the loop is observable + testable.
       console.info(`[deliver:dev-email] → ${input.recipient} | ${subject} | ${url}`);
       return { status: "sent", providerMessageId: `dev-${input.reportToken}` };
     }
@@ -99,12 +108,14 @@ class EmailDeliverer implements ReportDeliverer {
     try {
       const { Resend } = await import("resend");
       const resend = new Resend(apiKey);
-      const { data, error } = await resend.emails.send({
-        from,
-        to: input.recipient,
-        subject,
-        text,
-      });
+      // Bounded wait: the SDK has no timeout option; a hung send must become a
+      // logged FAILED delivery (operator can resend), not a stalled function.
+      const send = resend.emails.send({ from, to: input.recipient, subject, text });
+      void send.catch(() => {}); // no unhandled rejection if the timeout wins the race
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Resend send timed out after 15s")), 15_000),
+      );
+      const { data, error } = await Promise.race([send, timeout]);
       if (error) return { status: "failed", error: error.message };
       return { status: "sent", providerMessageId: data?.id };
     } catch (e) {

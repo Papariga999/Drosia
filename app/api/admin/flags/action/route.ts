@@ -36,12 +36,30 @@ export async function POST(req: Request): Promise<Response> {
   if (!flag) return NextResponse.json({ error: "Flag not found." }, { status: 404 });
 
   if (body.action === "remove") {
-    await admin.from("reports").update({ status: "rejected", reject_reason: "dsa_takedown" } as never).eq("id", flag.report_id);
-    await admin.from("content_flags").update({ status: "actioned" } as never).eq("id", id);
+    // Order matters: the report must actually be rejected (off every public
+    // surface) BEFORE the flag is marked actioned — otherwise a failed update
+    // would record a takedown that never happened.
+    const { error: rejectError } = await admin
+      .from("reports")
+      .update({ status: "rejected", reject_reason: "dsa_takedown" } as never)
+      .eq("id", flag.report_id);
+    if (rejectError) return NextResponse.json({ error: rejectError.message }, { status: 500 });
+
     await purgePublicPhotos(flag.report_id); // DSA takedown: drop the public photo object
+
+    const { error: flagError } = await admin
+      .from("content_flags")
+      .update({ status: "actioned" } as never)
+      .eq("id", id);
+    if (flagError) return NextResponse.json({ error: flagError.message }, { status: 500 });
+
     return NextResponse.json({ ok: true, action: "removed" });
   }
 
-  await admin.from("content_flags").update({ status: "dismissed" } as never).eq("id", id);
+  const { error: dismissError } = await admin
+    .from("content_flags")
+    .update({ status: "dismissed" } as never)
+    .eq("id", id);
+  if (dismissError) return NextResponse.json({ error: dismissError.message }, { status: 500 });
   return NextResponse.json({ ok: true, action: "dismissed" });
 }

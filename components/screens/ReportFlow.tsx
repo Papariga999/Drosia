@@ -8,7 +8,8 @@ import { PhotoPlaceholder } from "@/components/ui/Photo";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { fill } from "@/lib/i18n";
 import { REPORT_CATEGORIES, CATEGORY_META, categoryLabel, type ReportCategory } from "@/lib/categories";
-import { MAX_PHOTOS, MAX_DESCRIPTION } from "@/lib/report-intake";
+import { MAX_PHOTOS, MAX_DESCRIPTION, MAX_TOTAL_UPLOAD_BYTES } from "@/lib/report-intake";
+import { compressImage } from "@/lib/compress-image";
 import { getDeviceToken } from "@/lib/device-token";
 import { readExifGps, type LatLng } from "@/lib/exif-gps";
 import { trackEvent } from "@/lib/track";
@@ -38,7 +39,12 @@ export function ReportFlow() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+  // Two inputs, one handler: `capture` forces mobile browsers straight into the
+  // camera and never shows the gallery — so the camera-first CTA keeps it, and
+  // "upload from gallery" uses a capture-less input (the OS chooser, which
+  // offers both gallery and camera). One input can't do both.
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const galleryInput = useRef<HTMLInputElement>(null);
 
   // Object-URL previews derived from the files; revoked when they change/unmount.
   const previews = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files]);
@@ -56,21 +62,24 @@ export function ReportFlow() {
     }
   }, [coords]);
 
-  function addFiles(picked: FileList | null) {
+  async function addFiles(picked: FileList | null) {
     const list = Array.from(picked ?? []).filter((f) => f.type.startsWith("image/"));
     if (!list.length) return;
-    const merged = [...files, ...list].slice(0, MAX_PHOTOS);
-    setFiles(merged);
-    setError(null);
-    trackEvent("photo_added");
-    if (!coords && merged[0]) {
-      readExifGps(merged[0]).then((g) => {
+    // EXIF GPS must come from the ORIGINAL — compression strips metadata.
+    if (!coords && list[0]) {
+      readExifGps(list[0]).then((g) => {
         if (g) {
           setCoords(g);
           setLocSource("exif");
         }
       });
     }
+    // Compress in the browser: Vercel caps request bodies at ~4.5 MB, so raw
+    // phone photos must shrink before upload (also converts iOS HEIC → JPEG).
+    const compressed = await Promise.all(list.map(compressImage));
+    setFiles((prev) => [...prev, ...compressed].slice(0, MAX_PHOTOS));
+    setError(null);
+    trackEvent("photo_added");
   }
 
   function useCurrentLocation() {
@@ -102,6 +111,12 @@ export function ReportFlow() {
 
   async function submit() {
     if (!canSubmit || submitting) return;
+    // Hard platform bound: Vercel refuses bodies over ~4.5 MB with a 413 that
+    // never reaches our route — catch it here with an actionable message.
+    if (files.reduce((s, f) => s + f.size, 0) > MAX_TOTAL_UPLOAD_BYTES) {
+      setError(dict.flow.errTooLarge);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -196,10 +211,20 @@ export function ReportFlow() {
           <div>
             <StepTitle title={dict.flow.s1Title} sub={dict.flow.s1Sub} />
             <input
-              ref={fileInput}
+              ref={cameraInput}
               type="file"
               accept="image/*"
               capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <input
+              ref={galleryInput}
+              type="file"
+              accept="image/*"
               multiple
               className="hidden"
               onChange={(e) => {
@@ -207,14 +232,21 @@ export function ReportFlow() {
                 e.target.value = "";
               }}
             />
-            <button
-              onClick={() => fileInput.current?.click()}
-              className="flex h-[200px] w-full flex-col items-center justify-center gap-2.5 rounded-[20px] border-2 border-dashed border-primary/50 bg-tint-soft"
-            >
-              <div className="text-4xl">📷</div>
-              <div className="font-display text-[15px] font-extrabold text-primary-ink">{dict.flow.s1Cta}</div>
-              <div className="text-[12px] text-slate">{dict.flow.s1Hint}</div>
-            </button>
+            <div className="flex h-[200px] w-full flex-col rounded-[20px] border-2 border-dashed border-primary/50 bg-tint-soft">
+              <button
+                onClick={() => cameraInput.current?.click()}
+                className="flex w-full flex-1 flex-col items-center justify-center gap-2.5"
+              >
+                <div className="text-4xl">📷</div>
+                <div className="font-display text-[15px] font-extrabold text-primary-ink">{dict.flow.s1Cta}</div>
+              </button>
+              <button
+                onClick={() => galleryInput.current?.click()}
+                className="pb-4 text-[12px] text-slate underline underline-offset-2"
+              >
+                {dict.flow.s1Hint}
+              </button>
+            </div>
             <div className="mt-3.5 flex gap-2.5">
               {previews.map((src, i) => (
                 <div key={src} className="relative h-20 w-20 overflow-hidden rounded-[14px] border border-line">
@@ -231,7 +263,7 @@ export function ReportFlow() {
               ))}
               {files.length < MAX_PHOTOS && (
                 <button
-                  onClick={() => fileInput.current?.click()}
+                  onClick={() => galleryInput.current?.click()}
                   className="h-20 w-20 rounded-[14px] border-[1.5px] border-dashed border-line-strong bg-surface text-[22px] text-primary/50"
                 >
                   ＋
@@ -411,6 +443,11 @@ function StepTitle({ title, sub }: { title: string; sub: string }) {
 function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: () => void; onMap: () => void }) {
   const { dict } = useLocale();
 
+  // Client-only view (rendered after submit), so window is available.
+  const reportUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/r/${token}`;
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(`${dict.success.shareTitle} ${reportUrl}`)}`;
+  const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(reportUrl)}`;
+
   return (
     <div className="px-5 pb-8 pt-5 text-center">
       <div className="relative mx-auto grid h-21 w-21 place-items-center" style={{ width: 84, height: 84 }}>
@@ -438,25 +475,31 @@ function SuccessView({ token, onRestart, onMap }: { token: string; onRestart: ()
           </div>
         </div>
         <div className="flex flex-wrap gap-2 bg-surface-card p-3">
-          <div className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold">
+          <a
+            href={whatsappHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackEvent("share_click")}
+            className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold"
+          >
             WhatsApp
-          </div>
-          <div className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold">
+          </a>
+          <a
+            href={facebookHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackEvent("share_click")}
+            className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold"
+          >
             Facebook
-          </div>
+          </a>
         </div>
       </div>
 
-      <div className="mt-3.5 flex items-center gap-3 rounded-2xl border border-primary/30 bg-tint-soft p-3.5 text-left">
-        <div className="text-2xl">🔔</div>
-        <div className="flex-1">
-          <div className="font-display text-[14px] font-extrabold">{dict.success.follow}</div>
-          <div className="text-[12px] text-slate">{dict.success.followSub}</div>
-        </div>
-        <button className="rounded-[10px] bg-primary px-3.5 py-2 font-display text-[13px] font-extrabold text-white">
-          {dict.success.followCta}
-        </button>
-      </div>
+      {/* Follow/push CTA intentionally absent: subscriptions are captured by
+          /api/push/subscribe, but no sender exists yet — a button that promises
+          notifications we never send is worse than no button. Re-add with the
+          VAPID sender (see handover P1). */}
 
       <button
         onClick={onMap}

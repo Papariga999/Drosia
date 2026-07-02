@@ -60,8 +60,15 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Awaiting anonymization (blur not done)." }, { status: 409 });
   }
 
-  // Publish first (anonymized + approved → public).
-  await admin.from("reports").update({ status: "in_review" } as never).eq("id", report.id);
+  // Publish first (anonymized + approved → public). If this fails, stop — we must
+  // not email an authority a link to a report that never became public.
+  const { error: publishError } = await admin
+    .from("reports")
+    .update({ status: "in_review" } as never)
+    .eq("id", report.id);
+  if (publishError) {
+    return NextResponse.json({ error: publishError.message }, { status: 500 });
+  }
 
   // Publish without notifying: no email, no delivery_logs row, hold at in_review.
   if (!notify) {

@@ -99,7 +99,8 @@
     "errGeneric": "Something went wrong. Please try again.",
     "errBounds": "This location is not enabled yet.",
     "errRate": "Too many reports. Please try again later.",
-    "errBackend": "The backend isn't configured yet."
+    "errBackend": "The backend isn't configured yet.",
+    "errTooLarge": "The photos are too large to upload. Please remove one and try again."
   },
   "success": {
     "title": "Your report is in!",
