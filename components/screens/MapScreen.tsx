@@ -92,10 +92,26 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
 
         <button
           onClick={locateUser}
-          className="absolute bottom-28 right-4 z-[450] grid h-[46px] w-[46px] place-items-center rounded-[14px] bg-surface-card text-[11px] font-black text-primary-ink shadow-card"
+          className="absolute bottom-36 right-4 z-[450] grid h-[46px] w-[46px] place-items-center rounded-[14px] bg-surface-card text-primary-ink shadow-card"
           aria-label={dict.map.near}
         >
-          {locating ? "..." : "GPS"}
+          <svg
+            width={22}
+            height={22}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            className={locating ? "animate-pulse" : undefined}
+            aria-hidden
+          >
+            <circle cx="12" cy="12" r="4" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="5" y2="12" />
+            <line x1="19" y1="12" x2="22" y2="12" />
+          </svg>
         </button>
         <Link
           href="/report"
