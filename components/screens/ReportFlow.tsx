@@ -453,11 +453,19 @@ function SuccessView({
   onMap: () => void;
 }) {
   const { dict } = useLocale();
+  const [copied, setCopied] = useState(false);
 
   // Client-only view (rendered after submit), so window is available.
   const reportUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/r/${token}`;
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(`${dict.success.shareTitle} ${reportUrl}`)}`;
   const facebookHref = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(reportUrl)}`;
+
+  function copyLink() {
+    navigator.clipboard?.writeText(reportUrl).catch(() => {});
+    trackEvent("share_click");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
 
   return (
     <div className="px-5 pb-8 pt-5 text-center">
@@ -512,6 +520,13 @@ function SuccessView({
           >
             Facebook
           </a>
+          {/* Copy for everything else (Reddit, Instagram DMs, email, …). */}
+          <button
+            onClick={copyLink}
+            className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary bg-tint text-[13px] font-bold text-primary-ink"
+          >
+            🔗 {copied ? dict.common.copied : dict.common.copyLink}
+          </button>
         </div>
       </div>
 
