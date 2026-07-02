@@ -47,6 +47,19 @@ export interface AdminDisputeRow {
   created_at: string;
 }
 
+/** A supporter/partner first-contact lead (support_leads, from /support). */
+export interface AdminLeadRow {
+  id: string;
+  name: string;
+  organisation: string | null;
+  email: string;
+  role: string; // hotel|municipality|ngo|local|other
+  place: string | null;
+  message: string;
+  locale: string | null;
+  created_at: string;
+}
+
 /** A row on the admin "Status & To-dos" project board (admin_tasks). */
 export interface AdminTaskRow {
   id: string;

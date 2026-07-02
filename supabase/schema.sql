@@ -159,6 +159,22 @@ create table if not exists content_flags (
   created_at       timestamptz not null default now()
 );
 
+-- Supporter / partner first-contact leads (from the public /support form).
+-- NOT citizen reports and NOT public: service-role only (RLS on, no anon policy).
+-- Durable sink so a lead is never lost even if the notification email fails.
+create table if not exists support_leads (
+  id           uuid primary key default gen_random_uuid(),
+  name         text not null,
+  organisation text,
+  email        text not null,
+  role         text not null,            -- hotel|municipality|ngo|local|other
+  place        text,
+  message      text not null,
+  locale       text,                     -- UI language the form was filled in
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_support_leads_created on support_leads (created_at desc);
+
 -- Anonymous devices (engagement identity; NO PII, NO email).
 create table if not exists anon_devices (
   id           uuid primary key default gen_random_uuid(),
@@ -252,6 +268,7 @@ alter table report_photos      enable row level security;
 alter table delivery_logs      enable row level security;
 alter table authority_responses enable row level security;
 alter table content_flags      enable row level security;
+alter table support_leads      enable row level security;
 alter table anon_devices       enable row level security;
 alter table report_votes       enable row level security;
 alter table push_subscriptions enable row level security;

@@ -204,7 +204,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
             ))}
           </div>
           <Link
-            href="/support"
+            href="/support#contact"
             className="mt-4 block w-full rounded-[14px] bg-ink px-4 py-3.5 text-center font-display text-[15px] font-extrabold text-ink-contrast"
           >
             {dict.landing.partnerCta}

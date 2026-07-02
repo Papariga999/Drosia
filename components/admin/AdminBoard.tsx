@@ -10,6 +10,7 @@ import type {
   AdminDeliveryRow,
   AdminDisputeRow,
   AdminFlagRow,
+  AdminLeadRow,
   AdminReportRow,
   AdminTaskRow,
   DeliveryHealth,
@@ -34,7 +35,7 @@ function ago(iso: string): string {
  * still show demo data (clearly labelled) — next to be wired.
  * The outbound authority email stays in the authority's locale, never English.
  */
-type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags" | "status" | "analytics";
+type Screen = "queue" | "detail" | "authorities" | "delivery" | "flags" | "status" | "analytics" | "leads";
 
 const STATUS_PILL: Record<string, [string, string]> = {
   delivered: ["#EAFBF1", "#1B8B4A"],
@@ -360,10 +361,12 @@ export function AdminBoard() {
     flags: "Flags & Disputes",
     status: "Project Status & To-dos",
     analytics: "Website Analytics",
+    leads: "Supporter Leads",
   };
   const nav: { key: Screen; icon: string; label: string; count?: number }[] = [
     { key: "queue", icon: "📋", label: "Reports", count: pendingCount },
     { key: "analytics", icon: "📊", label: "Analytics" },
+    { key: "leads", icon: "✉", label: "Supporter Leads" },
     { key: "status", icon: "🗂", label: "Status & To-dos" },
     { key: "authorities", icon: "🏛", label: "Authority Directory" },
     { key: "delivery", icon: "📡", label: "Delivery & Bounce" },
@@ -445,6 +448,7 @@ export function AdminBoard() {
           )}
           {screen === "status" && <StatusView flash={flash} />}
           {screen === "analytics" && <AnalyticsView flash={flash} />}
+          {screen === "leads" && <LeadsView flash={flash} />}
           {screen === "authorities" && <AuthoritiesView flash={flash} />}
           {screen === "delivery" && <DeliveryView flash={flash} />}
           {screen === "flags" && <FlagsView tab={flagTab} setTab={setFlagTab} flash={flash} />}
@@ -2015,6 +2019,80 @@ function TaskEditModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Supporter Leads (from the public /support contact form) ---------- */
+const LEAD_ROLE_META: Record<string, { label: string; bg: string; fg: string }> = {
+  hotel: { label: "Hotel / tourism", bg: "#E6F7FA", fg: "#0E7C86" },
+  municipality: { label: "Municipality", bg: "#EAF1FD", fg: "#2D6BD8" },
+  ngo: { label: "NGO / environment", bg: "#EAF7EE", fg: "#1B8B4A" },
+  local: { label: "Local business", bg: "#FFF4DC", fg: "#B7820E" },
+  other: { label: "Other", bg: "#F0F4F5", fg: "#5B7378" },
+};
+
+function LeadsView({ flash }: { flash: (m: string) => void }) {
+  const [leads, setLeads] = useState<AdminLeadRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/admin/leads", { cache: "no-store" });
+        const data = (await res.json()) as { leads?: AdminLeadRow[] };
+        setLeads(data.leads ?? []);
+      } catch {
+        flash("Failed to load supporter leads");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [flash]);
+
+  if (loading) return <div className="text-[13px] text-[#9DB1B5]">Loading…</div>;
+  if (!leads.length) {
+    return (
+      <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">
+        No supporter messages yet. They arrive from the public /support form.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="text-[12px] text-[#9DB1B5]">
+        {leads.length} message{leads.length === 1 ? "" : "s"} · newest first
+      </div>
+      {leads.map((l) => {
+        const role = LEAD_ROLE_META[l.role] ?? LEAD_ROLE_META.other!;
+        const mailto = `mailto:${l.email}?subject=${encodeURIComponent("Re: your message to Drosia")}`;
+        return (
+          <div key={l.id} className="rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-display text-[15px] font-extrabold text-[#0B2B30]">{l.name}</span>
+              {l.organisation && <span className="text-[13px] text-[#5B7378]">· {l.organisation}</span>}
+              <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: role.bg, color: role.fg }}>
+                {role.label}
+              </span>
+              <span className="ml-auto text-[11px] text-[#9DB1B5]">
+                {shortDate(l.created_at)}
+                {l.locale ? ` · ${l.locale.toUpperCase()}` : ""}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px]">
+              <a href={mailto} className="font-bold text-[#00A6BC]">{l.email}</a>
+              {l.place && <span className="text-[#5B7378]">📍 {l.place}</span>}
+            </div>
+            <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[#3F5F64]">{l.message}</p>
+            <div className="mt-3">
+              <a href={mailto} className="rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-1.5 text-[12px] font-bold text-[#0E7C86]">
+                ✉ Reply
+              </a>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
