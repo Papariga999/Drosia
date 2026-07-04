@@ -232,7 +232,7 @@ function addReportMarker(
     : report.status === "resolved"
       ? "var(--success)"
       : severityColor(days);
-  const label = report.pending ? "⏳" : String(days);
+  const label = report.pending ? "⏳" : String(displayedVoteCount(report));
   const marker = L.marker([report.lat, report.lng], {
     icon: L.divIcon({
       className: "drosia-leaflet-marker",
@@ -289,6 +289,10 @@ function addHeatCircle(L: typeof import("leaflet"), map: LeafletMapInstance, rep
 
   circle.addTo(map);
   return circle;
+}
+
+function displayedVoteCount(report: PublicReport): number {
+  return Math.max(1, Number.isFinite(report.vote_count) ? report.vote_count : 0);
 }
 
 function pinHtml(color: string, label: string, selected: boolean): string {
