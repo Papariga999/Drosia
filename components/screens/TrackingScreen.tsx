@@ -248,7 +248,9 @@ export function TrackingScreen({
   return (
     <>
     {/* Sliding shell. The next-report pill and the flag dialog live OUTSIDE:
-        a transformed ancestor would hijack their position:fixed. */}
+        a transformed ancestor would hijack their position:fixed. The clip
+        wrapper keeps the translated shell from widening the page. */}
+    <div className="overflow-x-clip">
     <div
       className={next ? "pb-24" : "pb-8"}
       onTouchStart={onTouchStart}
@@ -397,13 +399,14 @@ export function TrackingScreen({
         <button onClick={() => setFlagOpen(true)} className="underline">⚐ {dict.tracking.flag}</button>
       </footer>
     </div>
+    </div>
 
     {/* Floating swipe affordance: the nearest unvisited report, one tap away.
         Doubles as the desktop navigation for the swipe gesture. */}
     {next && !flagOpen && (
       <nav
         aria-label={dict.tracking.nearby}
-        className={`pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center transition-opacity duration-150 ${leaving ? "opacity-0" : ""}`}
+        className={`pointer-events-none fixed inset-x-0 bottom-[max(16px,env(safe-area-inset-bottom))] z-40 flex justify-center transition-opacity duration-150 ${leaving ? "opacity-0" : ""}`}
       >
         <div className="pointer-events-auto flex items-stretch overflow-hidden rounded-full border border-line bg-surface-card/95 shadow-float backdrop-blur">
           <button
