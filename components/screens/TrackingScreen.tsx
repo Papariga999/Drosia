@@ -179,12 +179,14 @@ export function TrackingScreen({
 
   const resolved = report.status === "resolved";
   const days = reportAgeDays(report);
-  const cat = CATEGORY_META[report.category];
   const catLabel = categoryLabel(report.category, locale);
   const pin = resolved ? "var(--success)" : severityColor(days);
+  // The shell follows the finger while dragging, then slides out through the
+  // side (and fades) once a swipe or pill tap commits the navigation.
   const shellStyle = {
-    transform: `translateX(${leaving ? (leaving === 1 ? "-100%" : "100%") : dragX}px)`,
-    transition: leaving || dragX === 0 ? "transform 190ms ease" : "none",
+    transform: leaving ? `translateX(${leaving * -100}%)` : `translateX(${dragX}px)`,
+    opacity: leaving ? 0 : 1,
+    transition: dragX && !leaving ? "none" : "transform 190ms ease, opacity 190ms ease",
   };
 
   const timeline = [
@@ -244,11 +246,18 @@ export function TrackingScreen({
   }
 
   return (
+    <>
+    {/* Sliding shell. The next-report pill and the flag dialog live OUTSIDE:
+        a transformed ancestor would hijack their position:fixed. */}
     <div
-      className="pb-8"
+      className={next ? "pb-24" : "pb-8"}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onTouchCancel={() => {
+        gesture.current = null;
+        setDragX(0);
+      }}
       style={shellStyle}
     >
       <AppBar showWordmark />
@@ -273,15 +282,13 @@ export function TrackingScreen({
         </p>
       </div>
 
-      {/* Hero photo — anonymized only */}
+      {/* Hero photo — anonymized only. No category chip: the headline right
+          above already names it, and the photo reads calmer without overlays. */}
       <PhotoPlaceholder
         className="mx-4 mt-4 h-[210px] rounded-[20px]"
         pixel={!resolved}
         src={report.photo_url}
       >
-        <div className="absolute left-4 top-4 rounded-full bg-ink-fixed/80 px-3 py-1.5 text-[12px] font-bold text-white">
-          {cat.emoji} {catLabel}
-        </div>
         {resolved ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-success/30">
             <div className="grid h-14 w-14 place-items-center rounded-full border-[3px] border-white bg-success text-[30px] text-white shadow-card">
@@ -380,7 +387,7 @@ export function TrackingScreen({
           </div>
         ) : (
           <div className="rounded-[14px] border border-line bg-surface-card px-3 py-3 text-[12px] font-semibold text-muted">
-            No nearby public reports yet.
+            {dict.tracking.nearbyEmpty}
           </div>
         )}
       </div>
@@ -389,9 +396,39 @@ export function TrackingScreen({
         Drosia · Datenschutz · Impressum ·{" "}
         <button onClick={() => setFlagOpen(true)} className="underline">⚐ {dict.tracking.flag}</button>
       </footer>
-
-      {flagOpen && <FlagDialog token={report.public_token} onClose={() => setFlagOpen(false)} />}
     </div>
+
+    {/* Floating swipe affordance: the nearest unvisited report, one tap away.
+        Doubles as the desktop navigation for the swipe gesture. */}
+    {next && !flagOpen && (
+      <nav
+        aria-label={dict.tracking.nearby}
+        className={`pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center transition-opacity duration-150 ${leaving ? "opacity-0" : ""}`}
+      >
+        <div className="pointer-events-auto flex items-stretch overflow-hidden rounded-full border border-line bg-surface-card/95 shadow-float backdrop-blur">
+          <button
+            onClick={goPrev}
+            disabled={!prevToken}
+            aria-label={dict.tracking.prevReport}
+            className="grid w-11 place-items-center border-r border-line text-[17px] text-slate disabled:opacity-30"
+          >
+            ‹
+          </button>
+          <button
+            onClick={goNext}
+            className="flex items-center gap-1.5 py-2.5 pl-3.5 pr-4 text-[12.5px] font-bold"
+          >
+            <span aria-hidden>{CATEGORY_META[next.category].emoji}</span>
+            {dict.tracking.nextReport}
+            <span className="tnum font-semibold text-muted">· {formatDistance(next.distance_km)}</span>
+            <span aria-hidden className="text-[15px]">›</span>
+          </button>
+        </div>
+      </nav>
+    )}
+
+    {flagOpen && <FlagDialog token={report.public_token} onClose={() => setFlagOpen(false)} />}
+    </>
   );
 }
 
