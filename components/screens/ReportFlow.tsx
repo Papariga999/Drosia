@@ -1,13 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Camera,
+  Check,
+  CheckCircle2,
+  Info,
+  Landmark,
+  Link2,
+  Lock,
+  LocateFixed,
+  Map as MapIcon,
+  MapPin,
+  Plus,
+  RotateCcw,
+  Smartphone,
+  X,
+} from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 import { LangSwitch } from "@/components/ui/LangSwitch";
 import { PhotoPlaceholder } from "@/components/ui/Photo";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { fill } from "@/lib/i18n";
-import { REPORT_CATEGORIES, CATEGORY_META, categoryLabel, type ReportCategory } from "@/lib/categories";
+import { REPORT_CATEGORIES, categoryLabel, type ReportCategory } from "@/lib/categories";
 import { MAX_PHOTOS, MAX_DESCRIPTION, MAX_TOTAL_UPLOAD_BYTES } from "@/lib/report-intake";
 import { compressImage } from "@/lib/compress-image";
 import { getDeviceToken } from "@/lib/device-token";
@@ -109,6 +126,13 @@ export function ReportFlow() {
           : dict.flow.hintConsent
     : "";
 
+  // Handover 1c: the validation hint appears only AFTER tapping the disabled
+  // Continue — never by default. Tracking WHICH step was tapped (rather than a
+  // boolean) makes the hint vanish on step change or once the requirement is
+  // met, with no effect needed.
+  const [hintStep, setHintStep] = useState<Step | null>(null);
+  const showHint = hintStep === step && !canNext;
+
   async function submit() {
     if (!canSubmit || submitting) return;
     // Hard platform bound: Vercel refuses bodies over ~4.5 MB with a 413 that
@@ -156,7 +180,10 @@ export function ReportFlow() {
   }
 
   function next() {
-    if (!canNext) return;
+    if (!canNext) {
+      setHintStep(step);
+      return;
+    }
     if (step < 4) setStep((s) => (s + 1) as Step);
     else void submit();
   }
@@ -192,20 +219,14 @@ export function ReportFlow() {
           ‹
         </button>
         <h1 className="font-display text-[17px] font-black">{dict.flow.title}</h1>
-        <span className="tnum ml-auto text-[12px] font-bold text-muted">
-          {dict.flow.step} {step} {dict.flow.of} 4
-        </span>
+        <span className="ml-auto" />
         <LangSwitch />
       </div>
-      <div className="flex gap-1.5 px-5 pb-3 pt-3">
-        {[1, 2, 3, 4].map((d) => (
-          <div
-            key={d}
-            className="h-[5px] flex-1 rounded-full"
-            style={{ background: step >= d ? "var(--primary)" : "var(--border-strong)" }}
-          />
-        ))}
-      </div>
+      <StepIndicator
+        step={step}
+        labels={[dict.flow.stepPhoto, dict.flow.stepLocation, dict.flow.stepCategory, dict.flow.stepSend]}
+      />
+
 
       <div className="flex-1 px-5">
         {step === 1 && (
@@ -238,7 +259,7 @@ export function ReportFlow() {
                 onClick={() => cameraInput.current?.click()}
                 className="flex w-full flex-1 flex-col items-center justify-center gap-2.5"
               >
-                <div className="text-4xl">📷</div>
+                <Camera size={38} className="text-primary-ink" aria-hidden />
                 <div className="font-display text-[15px] font-extrabold text-primary-ink">{dict.flow.s1Cta}</div>
               </button>
               <button
@@ -256,22 +277,33 @@ export function ReportFlow() {
                   <button
                     onClick={() => setFiles((f) => f.filter((_, idx) => idx !== i))}
                     aria-label="Remove photo"
-                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-fixed/80 text-[12px] text-white"
+                    className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-fixed/80 text-white"
                   >
-                    ✕
+                    <X size={12} aria-hidden />
                   </button>
                 </div>
               ))}
               {files.length < MAX_PHOTOS && (
                 <button
                   onClick={() => galleryInput.current?.click()}
-                  className="h-20 w-20 rounded-[14px] border-[1.5px] border-dashed border-line-strong bg-surface text-[22px] text-primary/50"
+                  aria-label={dict.flow.s1Hint}
+                  className="grid h-20 w-20 place-items-center rounded-[14px] border-[1.5px] border-dashed border-line-strong bg-surface text-primary/50"
                 >
-                  ＋
+                  <Plus size={22} aria-hidden />
                 </button>
               )}
             </div>
             <div className="mt-2.5 text-[12px] text-muted">{fill(dict.flow.photoCount, { n: files.length })}</div>
+
+            {/* Photo-example strip (1c) — static teaching content, no ML. */}
+            <div className="mt-4">
+              <div className="text-[12px] font-bold text-slate">{dict.flow.exampleTitle}</div>
+              <div className="mt-2 flex gap-2">
+                <ExampleTile kind="good" label={dict.flow.exGood} />
+                <ExampleTile kind="far" label={dict.flow.exFar} />
+                <ExampleTile kind="dark" label={dict.flow.exDark} />
+              </div>
+            </div>
           </div>
         )}
 
@@ -280,7 +312,7 @@ export function ReportFlow() {
             <StepTitle title={dict.flow.s2Title} sub={dict.flow.s2Sub} />
             {coords && (
               <span className="mb-3.5 inline-flex items-center gap-1.5 rounded-full bg-tint px-3 py-1.5 text-[12px] font-bold text-primary-ink">
-                ✅ {dict.flow.locDetected}
+                <CheckCircle2 size={14} aria-hidden /> {dict.flow.locDetected}
               </span>
             )}
             <div className="relative h-[240px] overflow-hidden rounded-[20px] border border-line-strong">
@@ -305,8 +337,8 @@ export function ReportFlow() {
               />
               <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg bg-surface-card/90 px-2.5 py-1.5 text-[11px] font-semibold text-slate">
                 {coords ? (
-                  <span className="tnum">
-                    📌 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                  <span className="tnum inline-flex items-center gap-1">
+                    <MapPin size={12} aria-hidden /> {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
                   </span>
                 ) : (
                   dict.flow.locNone
@@ -319,7 +351,7 @@ export function ReportFlow() {
               disabled={locating}
               className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-primary bg-surface-card px-3 py-3 font-display text-[14px] font-extrabold text-primary-ink disabled:opacity-60"
             >
-              🎯 {locating ? dict.flow.locating : dict.flow.useLocation}
+              <LocateFixed size={17} aria-hidden /> {locating ? dict.flow.locating : dict.flow.useLocation}
             </button>
 
             <div className="mt-3 text-center text-[12px] font-bold text-muted">{dict.flow.tapHint}</div>
@@ -336,11 +368,13 @@ export function ReportFlow() {
                   <button
                     key={c}
                     onClick={() => setCat(c)}
-                    className={`rounded-full border-[1.5px] px-3 py-2 text-[13px] font-bold transition-colors ${
+                    aria-pressed={sel}
+                    className={`inline-flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-2 text-[13px] font-bold transition-colors ${
                       sel ? "border-primary bg-tint text-ink" : "border-line-strong bg-surface text-slate"
                     }`}
                   >
-                    {CATEGORY_META[c].emoji} {categoryLabel(c, locale)}
+                    <CategoryIcon category={c} size={17} className={sel ? "text-primary-ink" : "text-slate"} />
+                    {categoryLabel(c, locale)}
                   </button>
                 );
               })}
@@ -365,13 +399,13 @@ export function ReportFlow() {
               }}
             >
               <span
-                className="grid h-6 w-6 flex-none place-items-center rounded-[7px] border-2 text-[15px] text-white"
+                className="grid h-6 w-6 flex-none place-items-center rounded-[7px] border-2 text-white"
                 style={{
                   borderColor: consent ? "var(--success)" : "var(--muted)",
                   background: consent ? "var(--success)" : "transparent",
                 }}
               >
-                {consent ? "✓" : ""}
+                {consent && <Check size={15} aria-hidden />}
               </span>
               <span className="text-[12px] leading-relaxed text-slate">{dict.flow.consent}</span>
             </button>
@@ -391,42 +425,55 @@ export function ReportFlow() {
                 <PhotoPlaceholder className="h-16 w-16 flex-none rounded-xl" />
               )}
               <div>
-                <div className="font-display text-[14px] font-extrabold">
-                  {cat ? `${CATEGORY_META[cat].emoji} ${categoryLabel(cat, locale)}` : "—"}
+                <div className="flex items-center gap-1.5 font-display text-[14px] font-extrabold">
+                  {cat ? (
+                    <>
+                      <CategoryIcon category={cat} size={16} className="text-primary-ink" /> {categoryLabel(cat, locale)}
+                    </>
+                  ) : (
+                    "—"
+                  )}
                 </div>
-                <div className="tnum text-[12px] text-slate">
-                  📍 {coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : "—"}
+                <div className="tnum flex items-center gap-1 text-[12px] text-slate">
+                  <MapPin size={12} aria-hidden /> {coords ? `${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}` : "—"}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2.5 rounded-2xl border border-primary/30 bg-tint-soft p-3.5">
-              <div className="text-[22px]">🏛</div>
+              <Landmark size={22} className="flex-none text-primary-ink" aria-hidden />
               <div>
                 <div className="text-[12px] text-slate">{dict.flow.s4Auth}</div>
               </div>
             </div>
-            <p className="mt-3.5 text-[12px] leading-relaxed text-muted">🔒 {dict.flow.s4Note}</p>
+            <p className="mt-3.5 flex items-start gap-1.5 text-[12px] leading-relaxed text-muted">
+              <Lock size={13} className="mt-0.5 flex-none" aria-hidden /> {dict.flow.s4Note}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Sticky footer CTA */}
+      {/* Sticky footer CTA. The "disabled" state stays tappable so the first
+          tap can reveal the validation hint (1c) — never shown by default. */}
       <div className="sticky bottom-0 border-t border-line bg-surface-card px-5 pb-5 pt-3.5">
         <button
           onClick={next}
-          disabled={!canNext || submitting}
+          disabled={submitting}
+          aria-disabled={!canNext || submitting}
           className="w-full rounded-2xl px-4 py-4 font-display text-[16px] font-extrabold transition-all"
           style={{
             background: canNext && !submitting ? "var(--primary)" : "var(--border)",
             color: canNext && !submitting ? "#fff" : "var(--muted)",
             boxShadow: canNext && !submitting ? "var(--shadow-btn)" : "none",
-            cursor: canNext && !submitting ? "pointer" : "not-allowed",
           }}
         >
           {submitting ? dict.flow.submitting : step < 4 ? dict.flow.continue : dict.flow.send}
         </button>
         {error && <div className="mt-2 text-center text-[12px] font-bold text-severity-stale">{error}</div>}
-        {!error && hint && <div className="mt-2 text-center text-[12px] text-severity-stale">{hint}</div>}
+        {!error && showHint && hint && (
+          <div className="mt-2 flex items-center justify-center gap-1.5 text-center text-[12px] font-bold" style={{ color: "#B7820E" }}>
+            <Info size={14} className="flex-none" aria-hidden /> {hint}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -437,6 +484,93 @@ function StepTitle({ title, sub }: { title: string; sub: string }) {
     <div className="pt-1">
       <h2 className="font-display text-[21px] font-black">{title}</h2>
       <p className="mb-3.5 mt-1 text-[13px] text-slate">{sub}</p>
+    </div>
+  );
+}
+
+/**
+ * Labeled step indicator (1c) replacing "Step 1 of 4": numbered dots with
+ * labels connected by progress lines — done/current = aqua, upcoming = outline.
+ */
+function StepIndicator({ step, labels }: { step: Step; labels: [string, string, string, string] }) {
+  return (
+    <div className="flex items-start px-4 pb-4 pt-3" aria-label={labels[step - 1]}>
+      {labels.map((label, i) => {
+        const n = i + 1;
+        const done = step > n;
+        const current = step === n;
+        return (
+          <Fragment key={label}>
+            {i > 0 && (
+              <div
+                className="mt-[12px] h-[2px] min-w-3 flex-1"
+                style={{ background: step >= n ? "var(--primary)" : "var(--border-strong)" }}
+              />
+            )}
+            <div className="flex flex-col items-center gap-1 px-1">
+              <div
+                className="grid h-[26px] w-[26px] place-items-center rounded-full border-2 font-display text-[12px] font-black"
+                style={{
+                  background: done || current ? "var(--primary)" : "var(--surface-card)",
+                  borderColor: done || current ? "var(--primary)" : "var(--border-strong)",
+                  color: done || current ? "#fff" : "var(--muted)",
+                  boxShadow: current ? "0 0 0 4px var(--tint)" : "none",
+                }}
+              >
+                {done ? <Check size={14} aria-hidden /> : n}
+              </div>
+              <div
+                className="max-w-[64px] text-center text-[10px] font-bold leading-tight"
+                style={{ color: current ? "var(--primary-ink)" : done ? "var(--ink)" : "var(--muted)" }}
+              >
+                {label}
+              </div>
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * "What a good photo looks like" strip (1c) — static teaching thumbnails
+ * (gradient placeholders per handover; real photos come from reports).
+ */
+function ExampleTile({ kind, label }: { kind: "good" | "far" | "dark"; label: string }) {
+  const good = kind === "good";
+  const scene =
+    kind === "dark"
+      ? "linear-gradient(160deg,#22333a,#0d181d)"
+      : "repeating-linear-gradient(135deg,rgba(11,43,48,0.10) 0 10px,transparent 10px 22px),linear-gradient(160deg,#c9dee1,#a9c6cb)";
+  return (
+    <div className="flex-1">
+      <div
+        className="relative h-[62px] overflow-hidden rounded-[10px]"
+        style={{
+          background: scene,
+          border: good ? "2px solid var(--success)" : "1px solid var(--border-strong)",
+        }}
+      >
+        {/* "subject" block — big & centered when close, tiny when far */}
+        <div
+          className="absolute rounded-[3px]"
+          style={
+            kind === "far"
+              ? { left: "44%", top: "40%", width: 10, height: 8, background: "rgba(11,43,48,0.45)" }
+              : { left: "28%", top: "22%", width: "44%", height: "56%", background: "rgba(11,43,48,0.45)" }
+          }
+        />
+        <span
+          className="absolute right-1 top-1 grid h-[18px] w-[18px] place-items-center rounded-full text-white"
+          style={{ background: good ? "var(--success)" : "var(--muted)" }}
+        >
+          {good ? <Check size={11} aria-hidden /> : <X size={11} aria-hidden />}
+        </span>
+      </div>
+      <div className="mt-1 text-center text-[10px] font-bold" style={{ color: good ? "var(--success)" : "var(--muted)" }}>
+        {label}
+      </div>
     </div>
   );
 }
@@ -470,8 +604,8 @@ function SuccessView({
   return (
     <div className="px-5 pb-8 pt-5 text-center">
       <div className="relative mx-auto grid h-21 w-21 place-items-center" style={{ width: 84, height: 84 }}>
-        <div className="grid h-21 w-21 place-items-center rounded-full bg-[#EAFBF1] text-[42px]" style={{ width: 84, height: 84 }}>
-          ✅
+        <div className="grid h-21 w-21 place-items-center rounded-full bg-[#EAFBF1] text-success" style={{ width: 84, height: 84 }}>
+          <CheckCircle2 size={44} aria-hidden />
         </div>
       </div>
       <h1 className="mt-3.5 font-display text-[24px] font-black tracking-display">{dict.success.title}</h1>
@@ -525,7 +659,7 @@ function SuccessView({
             onClick={copyLink}
             className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-primary bg-tint text-[13px] font-bold text-primary-ink"
           >
-            🔗 {copied ? dict.common.copied : dict.common.copyLink}
+            <Link2 size={15} aria-hidden /> {copied ? dict.common.copied : dict.common.copyLink}
           </button>
         </div>
       </div>
@@ -539,15 +673,20 @@ function SuccessView({
         onClick={onMap}
         className="mt-3.5 flex w-full items-center gap-3 rounded-2xl border border-line bg-surface-card p-3.5 text-left"
       >
-        <div className="text-[22px]">🗺</div>
+        <MapIcon size={22} className="flex-none text-primary-ink" aria-hidden />
         <div className="flex-1 text-[13px] font-bold">{dict.success.nearby}</div>
         <span className="text-[18px] text-muted">›</span>
       </button>
 
-      <div className="mt-3.5 flex items-center justify-center gap-1.5 text-[12px] text-muted">📲 {dict.success.pwa}</div>
+      <div className="mt-3.5 flex items-center justify-center gap-1.5 text-[12px] text-muted">
+        <Smartphone size={14} aria-hidden /> {dict.success.pwa}
+      </div>
 
-      <button onClick={onRestart} className="mt-4 font-display text-[13px] font-extrabold text-primary-ink underline">
-        ↺ {dict.success.again}
+      <button
+        onClick={onRestart}
+        className="mt-4 inline-flex items-center gap-1.5 font-display text-[13px] font-extrabold text-primary-ink underline"
+      >
+        <RotateCcw size={13} aria-hidden /> {dict.success.again}
       </button>
     </div>
   );

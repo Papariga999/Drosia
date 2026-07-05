@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 
 /** Contact address for supporters/partners. Env-configurable; defaults to info@drosia.eu. */
@@ -82,7 +83,9 @@ export function SupportContactForm() {
   if (status === "sent") {
     return (
       <div className="rounded-[18px] border border-success/30 bg-tint-soft p-6 text-center">
-        <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-success text-[20px] text-white">✓</div>
+        <div className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-success text-white">
+          <Check size={20} aria-hidden />
+        </div>
         <h3 className="mt-3 font-display text-[18px] font-black">{S.successTitle}</h3>
         <p className="mx-auto mt-1.5 max-w-[380px] text-[13px] leading-relaxed text-slate">{S.successBody}</p>
       </div>

@@ -16,7 +16,7 @@ export default function ShareCardPage() {
   const variants: { v: ShareVariant; label: string }[] = [
     { v: "new", label: "New report (Aqua)" },
     { v: "ignored", label: "Ignored X days (severity red)" },
-    { v: "resolved", label: "Resolved 🎉 (mint, before/after)" },
+    { v: "resolved", label: "Resolved (night teal, before/after)" },
   ];
   return (
     <div className="pb-10">

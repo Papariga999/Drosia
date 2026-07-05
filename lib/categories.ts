@@ -22,7 +22,11 @@ export function isReportCategory(v: string): v is ReportCategory {
   return (REPORT_CATEGORIES as readonly string[]).includes(v);
 }
 
-/** Emoji + localized label per category, used in chips, pins and cards. */
+/**
+ * Localized label per category. `emoji` is legacy and only used by the
+ * English-only ADMIN board — every public surface renders the line-icon set
+ * from `components/ui/CategoryIcon` instead (site-review handover 1b/2a).
+ */
 export const CATEGORY_META: Record<
   ReportCategory,
   { emoji: string; label: Record<Locale, string> }

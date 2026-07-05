@@ -3,10 +3,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Map as LeafletMapInstance } from "leaflet";
+import { Hourglass, Sparkles, ThumbsUp } from "lucide-react";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { useLocale } from "@/components/LocaleProvider";
-import { categoryLabel, CATEGORY_META } from "@/lib/categories";
+import { categoryLabel } from "@/lib/categories";
+import { fill } from "@/lib/i18n";
+import { distanceKm } from "@/lib/geo";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
 
@@ -27,6 +31,17 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   const selectedReport =
     mappedReports.find((report) => report.public_token === selectedToken) ?? mappedReports[0];
   const hasReports = mappedReports.length > 0;
+
+  // Area stats strip (1d) — computed from the loaded (public, non-test)
+  // reports: total reported, fixed, and average days-to-fix.
+  const stats = useMemo(() => {
+    const resolved = mappedReports.filter((r) => r.status === "resolved" && !r.pending);
+    const real = mappedReports.filter((r) => !r.pending);
+    const avgDays = resolved.length
+      ? Math.round(resolved.reduce((sum, r) => sum + reportAgeDays(r), 0) / resolved.length)
+      : null;
+    return { reported: real.length, fixed: resolved.length, avgDays };
+  }, [mappedReports]);
 
   const openReport = useCallback((report: PublicReport) => {
     setSelectedToken(report.public_token);
@@ -83,6 +98,20 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
             <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary text-[0]" aria-hidden />
             <span className="flex-1 text-[14px] font-semibold text-muted">{dict.map.search}</span>
           </div>
+          {/* Stats strip (1d) — the map as a destination, not just a tool. */}
+          {hasReports && (
+            <div className="pointer-events-auto mt-2.5 flex items-center justify-center gap-1.5 rounded-[14px] bg-surface-card/95 px-3 py-2.5 shadow-card backdrop-blur">
+              <StatSeg value={stats.reported} label={dict.map.statReported} color="var(--ink)" />
+              <Dot />
+              <StatSeg value={stats.fixed} label={dict.map.statFixed} color="var(--success)" />
+              {stats.avgDays !== null && (
+                <>
+                  <Dot />
+                  <StatSeg value={stats.avgDays} label={dict.map.statAvgResp} color="var(--primary-ink)" />
+                </>
+              )}
+            </div>
+          )}
           <div className="pointer-events-auto mt-2.5 flex gap-2 overflow-hidden">
             <Chip active>{dict.map.near}</Chip>
             <Chip>{dict.map.open}</Chip>
@@ -139,7 +168,7 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
             <div className="absolute inset-0 z-[460] bg-ink-fixed/20" onClick={() => setSheet(false)} />
             <div className="absolute inset-x-0 bottom-0 z-[470] rounded-t-3xl bg-surface-card px-4 pb-5 pt-2.5 shadow-float">
               <div className="mx-auto mb-3.5 h-1 w-10 rounded-full bg-line-strong" />
-              <ReportPreview report={selectedReport} />
+              <ReportPreview report={selectedReport} all={mappedReports} />
             </div>
           </>
         )}
@@ -150,43 +179,104 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   );
 }
 
-function ReportPreview({ report }: { report: PublicReport }) {
+/**
+ * Pin-tap report card (1d): photo, severity-tinted age badge + status badge,
+ * title, municipality + report ID, social proof — plus a resolved-nearby
+ * teaser (resolved reports are the return-visit hook).
+ */
+function ReportPreview({ report, all }: { report: PublicReport; all: PublicReport[] }) {
   const { locale, dict } = useLocale();
   const days = reportAgeDays(report);
-  const meta = CATEGORY_META[report.category];
+  const resolved = report.status === "resolved";
+
+  const statusBadge = resolved
+    ? { bg: "#EAFBF1", fg: "#1B8B4A", label: dict.list.stResolved }
+    : report.status === "notified"
+      ? { bg: "#FFF4DC", fg: "#B7820E", label: dict.list.stForwarded }
+      : { bg: "var(--tint)", fg: "var(--primary-ink)", label: dict.list.stOpen };
+
+  // Nearest resolved report (other than this one) — before/after teaser.
+  const teaser = useMemo(() => {
+    if (report.pending) return null;
+    const candidates = all.filter((r) => r.status === "resolved" && r.public_token !== report.public_token);
+    if (!candidates.length) return null;
+    return (
+      candidates
+        .map((r) => ({ r, d: distanceKm(report.lat, report.lng, r.lat, r.lng) }))
+        .sort((a, b) => a.d - b.d)[0]?.r ?? null
+    );
+  }, [all, report]);
 
   return (
     <>
       <div className="flex gap-3.5">
         {report.photo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={report.photo_url} alt="" className="h-[88px] w-[88px] flex-none rounded-[14px] object-cover" />
+          <img src={report.photo_url} alt="" className="h-[92px] w-[92px] flex-none rounded-[14px] object-cover" />
         ) : (
-          <div className="photo-placeholder h-[88px] w-[88px] flex-none rounded-[14px]" />
+          <div className="photo-placeholder h-[92px] w-[92px] flex-none rounded-[14px]" />
         )}
         <div className="flex-1">
-          {report.pending ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 text-[11px] font-bold text-primary-ink">
-              ⏳ {dict.pending.badge}
-            </span>
-          ) : (
-            <span
-              className="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
-              style={{ color: severityColor(days), background: "var(--surface)" }}
-            >
-              {days} {dict.severity.days}
-            </span>
-          )}
-          <div className="mt-1.5 font-display text-[16px] font-black">
-            {meta.emoji} {categoryLabel(report.category, locale)}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {report.pending ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-tint px-2.5 py-1 text-[11px] font-bold text-primary-ink">
+                <Hourglass size={12} aria-hidden /> {dict.pending.badge}
+              </span>
+            ) : (
+              <>
+                <span
+                  className="tnum inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={{ color: severityColor(days), background: `${severityColor(days)}1A` }}
+                >
+                  {resolved ? dict.severity.fixedAfter : dict.severity.openFor} {days} {dict.severity.days}
+                </span>
+                <span
+                  className="rounded-full px-2.5 py-1 text-[11px] font-bold"
+                  style={{ background: statusBadge.bg, color: statusBadge.fg }}
+                >
+                  {statusBadge.label}
+                </span>
+              </>
+            )}
           </div>
-          <div className="mt-0.5 text-[12px] text-slate">
+          <div className="mt-1.5 flex items-center gap-1.5 font-display text-[16px] font-black">
+            <CategoryIcon category={report.category} size={17} className="text-primary-ink" />
+            {categoryLabel(report.category, locale)}
+          </div>
+          <div className="tnum mt-0.5 text-[12px] text-slate">
             {report.pending
               ? dict.pending.title
-              : `${report.authority_name[locale] || "-"} · ${report.vote_count}`}
+              : `${report.authority_name[locale] || "—"} · #${report.public_token.slice(0, 6)}`}
           </div>
+          {!report.pending && report.vote_count > 0 && (
+            <div className="mt-1 flex items-center gap-1.5 text-[12px] font-bold text-primary-ink">
+              <ThumbsUp size={13} aria-hidden /> {fill(dict.tracking.wantFixed, { n: report.vote_count })}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Resolved-nearby teaser (1d) */}
+      {teaser && (
+        <Link
+          href={`/r/${teaser.public_token}`}
+          className="mt-3 flex items-center gap-2.5 rounded-[14px] border border-success/40 bg-[#EAFBF1] p-2.5 dark:bg-success/10"
+        >
+          {teaser.photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={teaser.photo_url} alt="" className="h-10 w-10 flex-none rounded-[8px] object-cover" />
+          ) : (
+            <span className="grid h-10 w-10 flex-none place-items-center rounded-[8px] bg-success/15 text-success">
+              <Sparkles size={18} aria-hidden />
+            </span>
+          )}
+          <span className="flex-1 text-[12px] font-bold leading-snug text-success">
+            {fill(dict.map.teaserResolved, { n: reportAgeDays(teaser) })}
+          </span>
+          <span className="text-[15px] text-success">›</span>
+        </Link>
+      )}
+
       <Link
         href={`/r/${report.public_token}`}
         className="mt-3.5 block w-full rounded-[14px] bg-ink py-3 text-center font-display text-[15px] font-extrabold text-ink-contrast"
@@ -195,6 +285,21 @@ function ReportPreview({ report }: { report: PublicReport }) {
       </Link>
     </>
   );
+}
+
+function StatSeg({ value, label, color }: { value: number; label: string; color: string }) {
+  return (
+    <span className="flex items-baseline gap-1 whitespace-nowrap">
+      <span className="tnum font-display text-[15px] font-black" style={{ color }}>
+        {value}
+      </span>
+      <span className="text-[11px] font-bold text-slate">{label}</span>
+    </span>
+  );
+}
+
+function Dot() {
+  return <span className="px-0.5 text-[11px] text-muted">·</span>;
 }
 
 function Chip({ active, children }: { active?: boolean; children: React.ReactNode }) {

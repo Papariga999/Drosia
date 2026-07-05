@@ -181,6 +181,25 @@ body {
   transform: rotate(45deg);
 }
 
+/* Subtle idle bob for the ranking water drop (handover 1a). */
+@keyframes drosia-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+.drosia-bob {
+  animation: drosia-bob 3s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drosia-bob {
+    animation: none;
+  }
+}
+
 @keyframes drosia-shimmer {
   0% {
     background-position: -460px 0;

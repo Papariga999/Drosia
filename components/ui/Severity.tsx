@@ -1,3 +1,4 @@
+import { CheckCircle2, Clock } from "lucide-react";
 import { severityForDays, SEVERITY_COLOR, type SeverityLevel } from "@/lib/severity";
 
 /** Small severity dot + label pill, e.g. on cards and the tracking header. */
@@ -44,7 +45,9 @@ export function SeverityCounter({
   if (resolved) {
     return (
       <div className="flex items-baseline gap-2 font-display font-black text-[15px] text-success">
-        <span>✅ {fixedAfterLabel}</span>
+        <span className="inline-flex items-center gap-1.5">
+          <CheckCircle2 size={16} aria-hidden /> {fixedAfterLabel}
+        </span>
         <span className="tnum text-[40px] leading-none">{days}</span>
         <span>{daysLabel}</span>
       </div>
@@ -53,7 +56,9 @@ export function SeverityCounter({
   const color = SEVERITY_COLOR[severityForDays(days) as SeverityLevel];
   return (
     <div className="flex items-baseline gap-2 font-display font-black text-[15px] text-slate">
-      <span>⏱ {openForLabel}</span>
+      <span className="inline-flex items-center gap-1.5">
+        <Clock size={16} aria-hidden /> {openForLabel}
+      </span>
       <span className="tnum text-[40px] leading-none" style={{ color }}>
         {days}
       </span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertTriangle, BarChart3, Landmark, Scale, Trophy } from "lucide-react";
 import { AppBar } from "@/components/ui/AppBar";
 import { useLocale } from "@/components/LocaleProvider";
 import type { AuthorityPageData } from "@/lib/authority";
@@ -20,7 +21,9 @@ export function ScorecardScreen({ data }: { data: AuthorityPageData }) {
 
       <div className="mt-3 px-4">
         <div className="flex items-center gap-2.5 rounded-[20px] p-4 text-white" style={{ background: "linear-gradient(160deg,#00B4C8,#0096A8)" }}>
-          <div className="grid h-12 w-12 place-items-center rounded-[14px] bg-white/20 text-[24px]">🏛</div>
+          <div className="grid h-12 w-12 place-items-center rounded-[14px] bg-white/20">
+            <Landmark size={24} aria-hidden />
+          </div>
           <div>
             <div className="font-display text-[20px] font-black">{name}</div>
             <div className="text-[12px] opacity-90">{dict.scorecard.level}</div>
@@ -31,7 +34,7 @@ export function ScorecardScreen({ data }: { data: AuthorityPageData }) {
       <div className="px-4 pt-4">
         {data.disputed && (
           <div className="mb-3.5 flex gap-2.5 rounded-[16px] border border-[#F4D03F] bg-[#FFF8E6] p-3.5">
-            <div className="text-[20px]">⚠️</div>
+            <AlertTriangle size={20} className="flex-none text-[#B7820E]" aria-hidden />
             <div className="text-[12px] leading-relaxed text-[#7A5C0A]">{dict.scorecard.dispNote}</div>
           </div>
         )}
@@ -44,18 +47,20 @@ export function ScorecardScreen({ data }: { data: AuthorityPageData }) {
                 {data.ranked.rate}%
               </div>
               <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-[#EAFBF1] px-3 py-1 text-[12px] font-bold text-[#1B8B4A]">
-                🏆 {dict.scorecard.rank} {data.ranked.rank}
+                <Trophy size={13} aria-hidden /> {dict.scorecard.rank} {data.ranked.rank}
               </div>
             </div>
             <div className="mt-3 flex gap-2.5">
               <Stat value={String(data.ranked.notified)} label={dict.scorecard.open} color="var(--sev-warn)" />
               <Stat value={String(data.ranked.resolved)} label={dict.scorecard.resolved} color="var(--success)" />
             </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-muted">⚖️ {dict.scorecard.fair}</p>
+            <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-muted">
+              <Scale size={13} className="mt-0.5 flex-none" aria-hidden /> {dict.scorecard.fair}
+            </p>
           </>
         ) : (
           <div className="rounded-[20px] border border-dashed border-line-strong bg-surface-card p-6 text-center">
-            <div className="text-[38px]">📊</div>
+            <BarChart3 size={38} className="mx-auto text-muted" aria-hidden />
             <div className="mt-2 font-display text-[18px] font-black">{dict.scorecard.notTitle}</div>
             <p className="mt-2 text-[13px] leading-relaxed text-slate">{dict.scorecard.notBody}</p>
           </div>

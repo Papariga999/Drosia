@@ -1,4 +1,7 @@
-/** 3-step report timeline: Reported → Forwarded → Resolved. */
+/**
+ * Report status timeline (handover 1e): Reported → Forwarded → Acknowledged →
+ * Fixed. Done = aqua dots, current = citrus dot with halo, upcoming = outline.
+ */
 export function StatusTimeline({
   steps,
 }: {
@@ -12,13 +15,13 @@ export function StatusTimeline({
             <div
               className="mx-auto h-[18px] w-[18px] rounded-full border-2"
               style={{
-                backgroundColor: s.done ? "var(--primary)" : "var(--surface-card)",
-                borderColor: s.done ? "var(--primary)" : "var(--border-strong)",
-                boxShadow: s.current ? "0 0 0 4px var(--tint)" : "none",
+                backgroundColor: s.current ? "var(--accent)" : s.done ? "var(--primary)" : "var(--surface-card)",
+                borderColor: s.current ? "var(--accent)" : s.done ? "var(--primary)" : "var(--border-strong)",
+                boxShadow: s.current ? "0 0 0 4px rgba(255,194,71,0.28)" : "none",
               }}
             />
             <div
-              className={`mt-1.5 text-[12px] font-bold ${s.done ? "text-ink" : "text-muted"}`}
+              className={`mt-1.5 text-[12px] font-bold ${s.done || s.current ? "text-ink" : "text-muted"}`}
             >
               {s.label}
             </div>

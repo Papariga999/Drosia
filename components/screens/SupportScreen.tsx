@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Building2, Landmark, Leaf } from "lucide-react";
 import { AppBar } from "@/components/ui/AppBar";
 import { useLocale } from "@/components/LocaleProvider";
 import { SupportContactForm } from "@/components/screens/SupportContactForm";
@@ -21,9 +22,9 @@ export function SupportScreen() {
     { title: S.why3Title, body: S.why3Body },
   ];
   const audiences = [
-    { icon: "🏨", who: S.whoHotel, body: S.whoHotelBody },
-    { icon: "🏛", who: S.whoMuni, body: S.whoMuniBody },
-    { icon: "🌿", who: S.whoNgo, body: S.whoNgoBody },
+    { icon: <Building2 size={22} aria-hidden />, who: S.whoHotel, body: S.whoHotelBody },
+    { icon: <Landmark size={22} aria-hidden />, who: S.whoMuni, body: S.whoMuniBody },
+    { icon: <Leaf size={22} aria-hidden />, who: S.whoNgo, body: S.whoNgoBody },
   ];
 
   return (
@@ -59,7 +60,7 @@ export function SupportScreen() {
         <div className="mt-4 flex flex-col gap-3">
           {audiences.map((a) => (
             <div key={a.who} className="flex items-start gap-3 rounded-[16px] border border-line bg-surface-card p-4">
-              <div className="grid h-11 w-11 flex-none place-items-center rounded-xl bg-tint text-[22px]">{a.icon}</div>
+              <div className="grid h-11 w-11 flex-none place-items-center rounded-xl bg-tint text-primary-ink">{a.icon}</div>
               <div className="flex-1">
                 <div className="font-display text-[15px] font-extrabold">{a.who}</div>
                 <p className="mt-0.5 text-[13px] leading-relaxed text-slate">{a.body}</p>

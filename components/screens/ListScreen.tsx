@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ArrowUpRight, Clock, Flame, Landmark, Leaf, ThumbsUp } from "lucide-react";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { useLocale } from "@/components/LocaleProvider";
-import { categoryLabel, CATEGORY_META } from "@/lib/categories";
+import { categoryLabel } from "@/lib/categories";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
 
@@ -30,7 +32,7 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
     <div className="flex h-screen flex-col" id="list">
       <div className="border-b border-line bg-surface-card px-5 pt-4">
         <div className="flex items-center gap-2">
-          <span className="text-[22px]">🔥</span>
+          <Flame size={22} className="text-severity-warn" aria-hidden />
           <h1 className="font-display text-[21px] font-black">{dict.list.title}</h1>
         </div>
         <p className="mb-3 mt-1 text-[13px] text-slate">{dict.list.sub}</p>
@@ -53,7 +55,7 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
 
       {ranked.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center bg-surface px-8 text-center">
-          <div className="text-[40px]">🌱</div>
+          <Leaf size={40} className="text-success" aria-hidden />
           <p className="mt-2 text-[14px] font-bold text-slate">{dict.map.emptyTitle}</p>
         </div>
       ) : (
@@ -78,14 +80,19 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
                     <div className="photo-placeholder h-[60px] w-[60px] flex-none rounded-xl" />
                   )}
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-display text-[14px] font-extrabold">
-                      {CATEGORY_META[r.category].emoji} {categoryLabel(r.category, locale)}
+                    <div className="flex items-center gap-1.5 truncate font-display text-[14px] font-extrabold">
+                      <CategoryIcon category={r.category} size={15} className="flex-none text-primary-ink" />
+                      {categoryLabel(r.category, locale)}
                     </div>
-                    <div className="truncate text-[12px] text-slate">🏛 {r.authority_name[locale] || "—"}</div>
+                    <div className="flex items-center gap-1 truncate text-[12px] text-slate">
+                      <Landmark size={12} className="flex-none" aria-hidden /> {r.authority_name[locale] || "—"}
+                    </div>
                     <div className="mt-1.5 flex items-center gap-2.5">
-                      <span className="tnum font-display text-[13px] font-black text-primary-ink">👍 {r.vote_count}</span>
-                      <span className="tnum font-display text-[13px] font-black" style={{ color: severityColor(days) }}>
-                        ⏱ {days} {dict.severity.days}
+                      <span className="tnum inline-flex items-center gap-1 font-display text-[13px] font-black text-primary-ink">
+                        <ThumbsUp size={13} aria-hidden /> {r.vote_count}
+                      </span>
+                      <span className="tnum inline-flex items-center gap-1 font-display text-[13px] font-black" style={{ color: severityColor(days) }}>
+                        <Clock size={13} aria-hidden /> {days} {dict.severity.days}
                       </span>
                     </div>
                   </div>
@@ -93,7 +100,7 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
                     <span className="whitespace-nowrap rounded-full px-2 py-1 text-[10px] font-bold" style={{ background: b.bg, color: b.fg }}>
                       {b.label}
                     </span>
-                    <span className="text-[16px] text-muted">↗</span>
+                    <ArrowUpRight size={16} className="text-muted" aria-hidden />
                   </div>
                 </Link>
               </li>

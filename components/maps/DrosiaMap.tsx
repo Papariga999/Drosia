@@ -232,11 +232,11 @@ function addReportMarker(
     : report.status === "resolved"
       ? "var(--success)"
       : severityColor(days);
-  const label = report.pending ? "⏳" : String(displayedVoteCount(report));
+  const label = String(displayedVoteCount(report));
   const marker = L.marker([report.lat, report.lng], {
     icon: L.divIcon({
       className: "drosia-leaflet-marker",
-      html: pinHtml(color, label, selected),
+      html: report.pending ? pinHtmlRaw(color, PENDING_GLYPH_SVG, selected) : pinHtml(color, label, selected),
       iconSize: [46, 54],
       iconAnchor: [23, 50],
     }),
@@ -296,10 +296,19 @@ function displayedVoteCount(report: PublicReport): number {
 }
 
 function pinHtml(color: string, label: string, selected: boolean): string {
+  return pinHtmlRaw(color, escapeHtml(label), selected);
+}
+
+/** `inner` must already be safe HTML (escaped text or a trusted SVG string). */
+function pinHtmlRaw(color: string, inner: string, selected: boolean): string {
   const shadow = selected ? "0 0 0 6px rgba(30,202,217,.22),0 8px 20px rgba(11,43,48,.2)" : undefined;
   const shadowRule = shadow ? `box-shadow:${shadow}` : "";
-  return `<span class="drosia-map-pin" style="--pin-color:${color};${shadowRule}"><span class="drosia-map-pin__count">${escapeHtml(label)}</span></span>`;
+  return `<span class="drosia-map-pin" style="--pin-color:${color};${shadowRule}"><span class="drosia-map-pin__count">${inner}</span></span>`;
 }
+
+/** Hourglass line icon for pending pins (no emoji in pins — handover 1b). */
+const PENDING_GLYPH_SVG =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12l-4.4 4.4a2 2 0 0 0-.6 1.4V22"/><path d="M7 2v4.2a2 2 0 0 0 .6 1.4L12 12l4.4-4.4A2 2 0 0 0 17 6.2V2"/></svg>';
 
 function isValidLatLng(lat: number, lng: number): boolean {
   return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;

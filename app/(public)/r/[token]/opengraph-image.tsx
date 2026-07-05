@@ -35,8 +35,10 @@ export default async function ReportOpenGraphImage({
   const days = reportAgeDays(report);
   const isResolved = report.status === "resolved";
   const isIgnored = !isResolved && days >= 30;
+  // Resolved uses the night-teal share-card language (handover 1g): dark teal
+  // gradient, mint accent, credit for reporter AND authority.
   const theme = isResolved
-    ? { bg: "#2ECC71", fg: "#FFFFFF", panel: "rgba(255,255,255,0.18)", accent: "#FFFFFF" }
+    ? { bg: "linear-gradient(135deg,#07232A,#0E3A42)", fg: "#FFFFFF", panel: "rgba(0,180,200,0.16)", accent: "#2ECC71" }
     : isIgnored
       ? { bg: "#E74C3C", fg: "#FFFFFF", panel: "rgba(255,255,255,0.16)", accent: "#FFFFFF" }
       : { bg: "#FFFFFF", fg: "#0B2B30", panel: "#E0F3F5", accent: "#00B4C8" };
@@ -44,15 +46,16 @@ export default async function ReportOpenGraphImage({
   const category = categoryLabel(report.category, locale);
   const authority = report.authority_name[locale] || "Drosia";
   const headline = isResolved
-    ? dict.share.resolvedHead
+    ? `${dict.share.resolvedAfter} ${days} ${dict.severity.days}.`
     : isIgnored
       ? `${days} ${dict.share.ignoredHead}`
       : dict.share.newHead;
   const eyebrow = isResolved
-    ? `${dict.share.resolvedAfter} ${days} ${dict.severity.days}`
+    ? `${dict.share.fixedBadge} ✓`
     : isIgnored
       ? `${dict.share.ignoredLabel} ${days} ${dict.severity.days}`
       : dict.share.newBadge;
+  const subline = isResolved ? `${dict.share.credit} ${authority}` : authority;
 
   return new ImageResponse(
     (
@@ -216,7 +219,7 @@ export default async function ReportOpenGraphImage({
                 opacity: 0.86,
               }}
             >
-              {authority}
+              {subline}
             </div>
           </div>
 

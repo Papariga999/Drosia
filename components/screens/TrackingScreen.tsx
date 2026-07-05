@@ -3,15 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Bell, Check, CheckCircle2, Flag, Landmark, Lock, Share2 } from "lucide-react";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
 import { VoteBar } from "@/components/ui/VoteBar";
 import { PhotoPlaceholder } from "@/components/ui/Photo";
+import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { useLocale } from "@/components/LocaleProvider";
 import { fill } from "@/lib/i18n";
-import { categoryLabel, CATEGORY_META } from "@/lib/categories";
+import { categoryLabel } from "@/lib/categories";
 import { formatDistance } from "@/lib/geo";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import { shortDate, formatDate, type NearbyReport, type PublicReport } from "@/lib/mock";
@@ -189,8 +191,16 @@ export function TrackingScreen({
     transition: dragX && !leaving ? "none" : "transform 190ms ease, opacity 190ms ease",
   };
 
+  // 4-step retention timeline (1e). "Acknowledged" has no dedicated data-model
+  // status yet (see handover follow-ups) — it is only shown as reached once the
+  // report is resolved, never invented for open reports.
   const timeline = [
-    { label: dict.tracking.reported, date: shortDate(report.created_at), done: true },
+    {
+      label: dict.tracking.reported,
+      date: shortDate(report.created_at),
+      done: true,
+      current: !resolved && !report.notified_at,
+    },
     {
       label: dict.tracking.forwarded,
       date: report.notified_at ? shortDate(report.notified_at) : null,
@@ -198,10 +208,14 @@ export function TrackingScreen({
       current: !resolved && !!report.notified_at,
     },
     {
+      label: dict.tracking.acknowledged,
+      date: null,
+      done: resolved,
+    },
+    {
       label: dict.tracking.resolvedStep,
       date: report.resolved_at ? shortDate(report.resolved_at) : null,
       done: resolved,
-      current: resolved,
     },
   ];
 
@@ -269,7 +283,7 @@ export function TrackingScreen({
           days={days}
           label={
             resolved
-              ? `🟢 ${dict.severity.fixedAfter} ${days} ${dict.severity.days}`
+              ? `${dict.severity.fixedAfter} ${days} ${dict.severity.days}`
               : `${dict.severity.openFor} ${days} ${dict.severity.days}`
           }
           className="mb-3"
@@ -277,10 +291,13 @@ export function TrackingScreen({
         <h1 className="font-display text-[23px] font-black leading-tight tracking-display">
           {catLabel}
         </h1>
-        <p className="mt-1 text-[13px] text-slate">
-          🏛 {report.authority_name[locale] || "—"}
-          {report.place ? ` · ${report.place}` : ""} ·{" "}
-          <span className="tnum">{formatDate(report.created_at)}</span>
+        <p className="mt-1 flex items-center gap-1.5 text-[13px] text-slate">
+          <Landmark size={14} className="flex-none" aria-hidden />
+          <span>
+            {report.authority_name[locale] || "—"}
+            {report.place ? ` · ${report.place}` : ""} ·{" "}
+            <span className="tnum">{formatDate(report.created_at)}</span>
+          </span>
         </p>
       </div>
 
@@ -293,16 +310,16 @@ export function TrackingScreen({
       >
         {resolved ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-success/30">
-            <div className="grid h-14 w-14 place-items-center rounded-full border-[3px] border-white bg-success text-[30px] text-white shadow-card">
-              ✓
+            <div className="grid h-14 w-14 place-items-center rounded-full border-[3px] border-white bg-success text-white shadow-card">
+              <Check size={30} aria-hidden />
             </div>
             <span className="rounded-full bg-white px-3.5 py-1.5 font-display text-[13px] font-extrabold text-success">
               {dict.status.resolved}
             </span>
           </div>
         ) : (
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink-fixed/60 to-transparent p-3 text-[11px] font-semibold text-white">
-            🔒 {fill(dict.tracking.photoAlt, { category: catLabel })}
+          <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-ink-fixed/60 to-transparent p-3 text-[11px] font-semibold text-white">
+            <Lock size={12} className="flex-none" aria-hidden /> {fill(dict.tracking.photoAlt, { category: catLabel })}
           </div>
         )}
       </PhotoPlaceholder>
@@ -326,8 +343,11 @@ export function TrackingScreen({
 
       {/* Share + secondary actions */}
       <div className="px-4 pt-5">
-        <button onClick={() => void nativeShare()} className="w-full rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast">
-          📣 {dict.tracking.shareTitle}
+        <button
+          onClick={() => void nativeShare()}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast"
+        >
+          <Share2 size={17} aria-hidden /> {dict.tracking.shareTitle}
         </button>
         <div className="mt-3 flex flex-wrap gap-2">
           <ShareBtn label="WhatsApp" onClick={() => openShare("whatsapp")}><ShareGlyph name="whatsapp" /></ShareBtn>
@@ -342,19 +362,19 @@ export function TrackingScreen({
           </button>
         </div>
         <div className="mt-3 flex gap-2.5">
-          <button className="flex-1 rounded-btn border-[1.5px] border-success bg-surface-card px-3 py-3 font-display text-[13px] font-extrabold text-success">
-            ✅ {dict.tracking.looksClean}
+          <button className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] border-success bg-surface-card px-3 py-3 font-display text-[13px] font-extrabold text-success">
+            <CheckCircle2 size={15} aria-hidden /> {dict.tracking.looksClean}
           </button>
           <button
             onClick={() => setFollowing((f) => !f)}
             aria-pressed={following}
-            className={`flex-1 rounded-btn border-[1.5px] px-3 py-3 font-display text-[13px] font-extrabold ${
+            className={`flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] px-3 py-3 font-display text-[13px] font-extrabold ${
               following
                 ? "border-primary bg-primary text-white"
                 : "border-primary bg-surface-card text-primary-ink"
             }`}
           >
-            🔔 {following ? dict.tracking.following : dict.tracking.follow}
+            <Bell size={15} aria-hidden /> {following ? dict.tracking.following : dict.tracking.follow}
           </button>
         </div>
         <p className="mt-2 text-center text-[11px] text-muted">{dict.tracking.followDesc}</p>
@@ -396,7 +416,9 @@ export function TrackingScreen({
 
       <footer className="px-5 pb-2 pt-5 text-center text-[11px] text-muted">
         Drosia · {dict.footer.privacy} · {dict.footer.imprint} ·{" "}
-        <button onClick={() => setFlagOpen(true)} className="underline">⚐ {dict.tracking.flag}</button>
+        <button onClick={() => setFlagOpen(true)} className="inline-flex items-center gap-1 underline">
+          <Flag size={11} aria-hidden /> {dict.tracking.flag}
+        </button>
       </footer>
     </div>
     </div>
@@ -421,7 +443,7 @@ export function TrackingScreen({
             onClick={goNext}
             className="flex items-center gap-1.5 py-2.5 pl-3.5 pr-4 text-[12.5px] font-bold"
           >
-            <span aria-hidden>{CATEGORY_META[next.category].emoji}</span>
+            <CategoryIcon category={next.category} size={15} className="text-primary-ink" />
             {dict.tracking.nextReport}
             <span className="tnum font-semibold text-muted">· {formatDistance(next.distance_km)}</span>
             <span aria-hidden className="text-[15px]">›</span>
@@ -464,9 +486,13 @@ function FlagDialog({ token, onClose }: { token: string; onClose: () => void }) 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink-fixed/40 sm:items-center" onClick={onClose}>
       <div className="w-full max-w-[420px] rounded-t-3xl bg-surface-card p-5 shadow-float sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-display text-[16px] font-black">⚐ {dict.tracking.flagTitle}</h3>
+        <h3 className="flex items-center gap-1.5 font-display text-[16px] font-black">
+          <Flag size={15} aria-hidden /> {dict.tracking.flagTitle}
+        </h3>
         {sent ? (
-          <p className="py-6 text-center text-[14px] font-bold text-success">✓ {dict.tracking.flagSent}</p>
+          <p className="flex items-center justify-center gap-1.5 py-6 text-center text-[14px] font-bold text-success">
+            <Check size={15} aria-hidden /> {dict.tracking.flagSent}
+          </p>
         ) : (
           <>
             <textarea
@@ -513,13 +539,12 @@ function NearbyCard({ report }: { report: NearbyReport }) {
   const { locale, dict } = useLocale();
   const days = reportAgeDays(report);
   const label = categoryLabel(report.category, locale);
-  const cat = CATEGORY_META[report.category];
   return (
     <Link href={`/r/${report.public_token}`} className="flex-1 overflow-hidden rounded-[14px] border border-line bg-surface-card">
       <PhotoPlaceholder className="h-16" pixel={false} src={report.photo_url} />
       <div className="px-2.5 py-2">
-        <div className="truncate text-[11px] font-bold">
-          {cat.emoji} {label}
+        <div className="flex items-center gap-1 truncate text-[11px] font-bold">
+          <CategoryIcon category={report.category} size={13} className="flex-none text-primary-ink" /> {label}
         </div>
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <span className="tnum font-display text-[13px] font-black" style={{ color: severityColor(days) }}>

@@ -59,10 +59,10 @@ export function ShareCard({
             <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 32, letterSpacing: "-0.02em" }}>Drosia</span>
           </div>
           <div style={{ marginTop: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ fontWeight: 700, fontSize: 26, opacity: 0.92 }}>⏱ {dict.share.ignoredLabel}</div>
+            <div style={{ fontWeight: 700, fontSize: 26, opacity: 0.92 }}>{dict.share.ignoredLabel}</div>
             <div style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 200, lineHeight: 0.92, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.04em" }}>{days}</div>
             <div style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 46 }}>{dict.share.ignoredHead}</div>
-            <div style={{ fontWeight: 600, fontSize: 22, opacity: 0.92, marginTop: 12 }}>🗑 {category} · 🏛 {authority}</div>
+            <div style={{ fontWeight: 600, fontSize: 22, opacity: 0.92, marginTop: 12 }}>{category} · {authority}</div>
           </div>
           <div style={{ fontWeight: 700, fontSize: 19, opacity: 0.85, marginTop: 30 }}>{url}</div>
         </div>
@@ -71,35 +71,67 @@ export function ShareCard({
   }
 
   if (variant === "resolved") {
+    // Handover 1g: night-teal gradient, ripple circles bottom-right, wordmark +
+    // "Fixed ✓" mint badge, before/after with date badges, days in mint,
+    // credit line for reporter AND authority, footer URL + claim.
     return (
-      <div style={{ width: 1200, height: 630, display: "flex", background: "linear-gradient(155deg,#2ECC71,#1B9E54)", fontFamily: "Mulish, sans-serif" }}>
-        <div style={{ width: 560, height: "100%", flex: "none", position: "relative", display: "flex" }}>
-          <div style={{ width: "50%", height: "100%", background: SCENE, position: "relative", filter: "saturate(0.65) brightness(0.85)" }}>
-            <div style={{ position: "absolute", left: 110, bottom: 200, width: 90, height: 70, borderRadius: 6, backgroundImage: PIX }} />
-            <div style={{ position: "absolute", left: 18, top: 18, background: "rgba(11,43,48,0.7)", color: "#fff", fontWeight: 700, fontSize: 15, padding: "6px 13px", borderRadius: 999 }}>{dict.share.before}</div>
-          </div>
-          <div style={{ width: "50%", height: "100%", background: "linear-gradient(180deg,#cdeED7,#a7e6c0)", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ position: "absolute", right: 18, top: 18, background: "#fff", color: "#1B8B4A", fontWeight: 700, fontSize: 15, padding: "6px 13px", borderRadius: 999 }}>{dict.share.after}</div>
-            <div style={{ fontSize: 60 }}>✨</div>
-          </div>
-          <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 4, background: "#fff", transform: "translateX(-50%)" }} />
+      <div
+        style={{
+          width: 1200,
+          height: 630,
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          background: "linear-gradient(135deg,#07232A,#0E3A42)",
+          fontFamily: "Mulish, sans-serif",
+          color: "#fff",
+          padding: "44px 54px",
+          overflow: "hidden",
+        }}
+      >
+        {/* faint ripple circles bottom-right */}
+        <div style={{ position: "absolute", right: -140, bottom: -160, width: 420, height: 420, borderRadius: 999, border: "2px solid rgba(0,180,200,0.18)", display: "flex" }} />
+        <div style={{ position: "absolute", right: -60, bottom: -80, width: 260, height: 260, borderRadius: 999, border: "2px solid rgba(0,180,200,0.14)", display: "flex" }} />
+        <div style={{ position: "absolute", right: 10, bottom: -10, width: 130, height: 130, borderRadius: 999, border: "2px solid rgba(0,180,200,0.10)", display: "flex" }} />
+
+        {/* header: wordmark + Fixed badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <Mark size={36} drop="#00B4C8" hole="#07232A" />
+          <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 32, letterSpacing: "-0.02em" }}>Drosia</span>
+          <span style={{ display: "flex", alignItems: "center", marginLeft: 18, background: "#2ECC71", color: "#07232A", fontFamily: "Nunito", fontWeight: 900, fontSize: 22, padding: "8px 20px", borderRadius: 999 }}>
+            {dict.share.fixedBadge} ✓
+          </span>
         </div>
-        <div style={{ flex: 1, padding: "50px 54px", display: "flex", flexDirection: "column", color: "#fff" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Mark size={38} drop="#fff" hole="#2ECC71" />
-            <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 32, letterSpacing: "-0.02em" }}>Drosia</span>
-          </div>
-          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ fontSize: 54 }}>🎉</div>
-            <div style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 58, lineHeight: 1.05, letterSpacing: "-0.02em", margin: "8px 0 14px" }}>{dict.share.resolvedHead}</div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 12, background: "rgba(255,255,255,0.2)", padding: "14px 24px", borderRadius: 18, alignSelf: "flex-start" }}>
-              <span style={{ fontWeight: 700, fontSize: 22 }}>{dict.share.resolvedAfter}</span>
-              <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 48, fontVariantNumeric: "tabular-nums" }}>{resolvedDays}</span>
-              <span style={{ fontFamily: "Nunito", fontWeight: 800, fontSize: 24 }}>{dict.severity.days}</span>
+
+        {/* before/after strip with date badges */}
+        <div style={{ display: "flex", gap: 18, marginTop: 32 }}>
+          <div style={{ width: 400, height: 260, borderRadius: 22, background: SCENE, position: "relative", display: "flex", filter: "saturate(0.65) brightness(0.8)", overflow: "hidden" }}>
+            <div style={{ position: "absolute", left: 130, bottom: 90, width: 110, height: 80, borderRadius: 6, backgroundImage: PIX, display: "flex" }} />
+            <div style={{ position: "absolute", left: 16, top: 16, background: "rgba(11,43,48,0.75)", color: "#fff", fontWeight: 700, fontSize: 17, padding: "7px 15px", borderRadius: 999, display: "flex" }}>
+              {dict.share.before}
             </div>
-            <div style={{ fontWeight: 600, fontSize: 22, opacity: 0.95, marginTop: 16 }}>🏛 {authority}</div>
           </div>
-          <div style={{ fontWeight: 700, fontSize: 19, opacity: 0.9, marginTop: 30 }}>{url}</div>
+          <div style={{ width: 400, height: 260, borderRadius: 22, background: "linear-gradient(180deg,#cdeed7,#a7e6c0)", position: "relative", display: "flex", overflow: "hidden" }}>
+            <div style={{ position: "absolute", right: 16, top: 16, background: "#fff", color: "#1B8B4A", fontWeight: 700, fontSize: 17, padding: "7px 15px", borderRadius: 999, display: "flex" }}>
+              {dict.share.after}
+            </div>
+          </div>
+        </div>
+
+        {/* headline + credit */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginTop: 34 }}>
+          <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 56, letterSpacing: "-0.02em" }}>{dict.share.resolvedAfter}</span>
+          <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 74, color: "#2ECC71", fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>{resolvedDays}</span>
+          <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 56, letterSpacing: "-0.02em" }}>{dict.severity.days}.</span>
+        </div>
+        <div style={{ display: "flex", fontWeight: 600, fontSize: 24, opacity: 0.85, marginTop: 8 }}>
+          {dict.share.credit} {authority}
+        </div>
+
+        {/* footer */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: "auto" }}>
+          <span style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 24, color: "#00B4C8" }}>{url}</span>
+          <span style={{ fontWeight: 600, fontSize: 20, opacity: 0.7 }}>{dict.share.footerClaim}</span>
         </div>
       </div>
     );
@@ -110,8 +142,8 @@ export function ShareCard({
     <div style={{ width: 1200, height: 630, display: "flex", background: "#fff", fontFamily: "Mulish, sans-serif" }}>
       <div style={{ width: 560, height: "100%", flex: "none", background: SCENE, position: "relative" }}>
         <div style={{ position: "absolute", left: 300, bottom: 200, width: 120, height: 88, borderRadius: 6, backgroundImage: PIX }} />
-        <div style={{ position: "absolute", left: 28, top: 28, background: "rgba(11,43,48,0.82)", color: "#fff", fontWeight: 700, fontSize: 18, padding: "9px 16px", borderRadius: 999 }}>🗑 {category}</div>
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent,rgba(11,43,48,0.55))", padding: 28, color: "#fff", fontWeight: 600, fontSize: 18 }}>🔒 {dict.share.anon}</div>
+        <div style={{ position: "absolute", left: 28, top: 28, background: "rgba(11,43,48,0.82)", color: "#fff", fontWeight: 700, fontSize: 18, padding: "9px 16px", borderRadius: 999 }}>{category}</div>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "linear-gradient(transparent,rgba(11,43,48,0.55))", padding: 28, color: "#fff", fontWeight: 600, fontSize: 18 }}>{dict.share.anon}</div>
       </div>
       <div style={{ flex: 1, padding: "50px 54px", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -121,7 +153,7 @@ export function ShareCard({
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
           <div style={{ background: "#E0F3F5", color: "#00A6BC", fontFamily: "Nunito", fontWeight: 800, fontSize: 22, padding: "10px 20px", borderRadius: 999 }}>{dict.share.newBadge}</div>
           <div style={{ fontFamily: "Nunito", fontWeight: 900, fontSize: 60, lineHeight: 1.05, color: "#0B2B30", letterSpacing: "-0.02em", margin: "22px 0 10px" }}>{dict.share.newHead}</div>
-          <div style={{ fontWeight: 600, fontSize: 24, color: "#5B7378" }}>🏛 {authority} · {place}</div>
+          <div style={{ fontWeight: 600, fontSize: 24, color: "#5B7378" }}>{authority} · {place}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 40 }}>
           <div style={{ width: 54, height: 54, borderRadius: 14, background: "#F0FAFB", display: "flex", alignItems: "center", justifyContent: "center" }}>

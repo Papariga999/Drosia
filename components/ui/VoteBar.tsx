@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { AlertCircle, ThumbsUp } from "lucide-react";
 import { getDeviceToken } from "@/lib/device-token";
 
 /**
- * 👍 "Important" + 🔴 "Still here" buttons. Optimistic increment, then POST to
+ * "Important" (thumbs-up) + "Still here" (alert) buttons. Optimistic increment, then POST to
  * /api/vote with the anonymous device token (server dedupes per device per type
  * via a UNIQUE constraint). On failure we revert; on success we sync to the
  * server's authoritative counts. Social-proof line reflects priority votes.
@@ -77,7 +78,9 @@ export function VoteBar({
           disabled={voted || busy}
           className="flex-1 rounded-2xl border-2 border-primary bg-tint px-3 py-3.5 text-center transition-transform active:scale-95 disabled:opacity-70"
         >
-          <div className="text-2xl leading-none">👍</div>
+          <div className="grid place-items-center text-primary-ink">
+            <ThumbsUp size={24} aria-hidden />
+          </div>
           <div className="tnum mt-1 font-display text-[28px] font-black text-primary-ink">
             {votes}
           </div>
@@ -92,7 +95,9 @@ export function VoteBar({
           className="flex-1 rounded-2xl border-2 px-3 py-3.5 text-center transition-transform active:scale-95 disabled:opacity-70"
           style={{ borderColor: "var(--sev-stale)", backgroundColor: "#FDECEA" }}
         >
-          <div className="text-2xl leading-none">🔴</div>
+          <div className="grid place-items-center" style={{ color: "#C0392B" }}>
+            <AlertCircle size={24} aria-hidden />
+          </div>
           <div
             className="tnum mt-1 font-display text-[28px] font-black"
             style={{ color: "#C0392B" }}
