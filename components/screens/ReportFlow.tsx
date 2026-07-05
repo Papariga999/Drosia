@@ -462,7 +462,7 @@ function SuccessView({
 
   function copyLink() {
     navigator.clipboard?.writeText(reportUrl).catch(() => {});
-    trackEvent("share_click");
+    trackEvent("share_click", { reportToken: token, shareChannel: "copy" });
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
   }
@@ -506,7 +506,7 @@ function SuccessView({
             href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => trackEvent("share_click")}
+            onClick={() => trackEvent("share_click", { reportToken: token, shareChannel: "whatsapp" })}
             className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold"
           >
             WhatsApp
@@ -515,7 +515,7 @@ function SuccessView({
             href={facebookHref}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => trackEvent("share_click")}
+            onClick={() => trackEvent("share_click", { reportToken: token, shareChannel: "facebook" })}
             className="flex h-[42px] min-w-[100px] flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-surface text-[13px] font-bold"
           >
             Facebook

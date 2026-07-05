@@ -691,10 +691,16 @@ create table if not exists web_events (
   source       text,
   country      text,          -- coarse ISO country from the edge header; never the IP
   device       text,          -- 'mobile' | 'desktop' (bots are dropped at ingest)
+  os           text,          -- coarse OS family: windows|macos|android|ios|linux|other
+  share_channel text,         -- only for share_click: whatsapp|facebook|x|copy|native|other
+  duration_ms  integer,       -- only for session_duration: cumulative active tab time, capped at ingest
   sid          text,          -- random session-scoped id, NOT an identity
   locale       text,
   created_at   timestamptz not null default now()
 );
+alter table web_events add column if not exists os text;
+alter table web_events add column if not exists share_channel text;
+alter table web_events add column if not exists duration_ms integer;
 create index if not exists idx_web_events_created on web_events (created_at);
 create index if not exists idx_web_events_report  on web_events (report_token) where report_token is not null;
 create index if not exists idx_web_events_event   on web_events (event);
@@ -744,18 +750,58 @@ ev  as (select e.* from web_events e, b where e.created_at >= b.since),
 evp as (select e.* from web_events e, b where e.created_at >= b.prev_since and e.created_at < b.since),
 series as (select gs::date as day from generate_series((current_date - ((select days from d)-1))::timestamp, current_date::timestamp, interval '1 day') gs),
 ts as (select s.day, count(e.id) filter (where e.event='pageview') as pageviews, count(distinct e.sid) as sessions
-       from series s left join ev e on e.created_at::date = s.day group by s.day)
+       from series s left join ev e on e.created_at::date = s.day group by s.day),
+span_durations as (
+  select sid, least(14400, greatest(0, extract(epoch from max(created_at)-min(created_at)))) as seconds
+  from ev
+  where sid is not null
+  group by sid
+  having count(*) > 1
+),
+beacon_durations as (
+  select sid, least(14400, max(duration_ms) / 1000.0) as seconds
+  from ev
+  where event='session_duration' and sid is not null and duration_ms is not null
+  group by sid
+),
+session_durations as (
+  select coalesce(b.sid, s.sid) as sid, coalesce(b.seconds, s.seconds) as seconds
+  from span_durations s
+  full join beacon_durations b using (sid)
+  where coalesce(b.seconds, s.seconds) > 0
+)
 select jsonb_build_object(
   'days',(select days from d),
   'web', jsonb_build_object(
     'pageviews',(select count(*) from ev where event='pageview'),
     'sessions',(select count(distinct sid) from ev),
     'report_views',(select count(*) from ev where event='pageview' and report_token is not null),
+    'avg_session_seconds',(select round(avg(seconds))::integer from session_durations),
+    'median_session_seconds',(select round(percentile_cont(0.5) within group (order by seconds))::integer from session_durations),
+    'duration_sample',(select count(*) from session_durations),
     'timeseries',(select coalesce(jsonb_agg(jsonb_build_object('day',day,'pageviews',pageviews,'sessions',sessions) order by day),'[]'::jsonb) from ts),
     'sources',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(source,'direct'),'views',count(*)) j from ev where event='pageview' group by coalesce(source,'direct') order by count(*) desc limit 8) x),
     'countries',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(country,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(country,'?') order by count(*) desc limit 8) x),
     'devices',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(device,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(device,'?') order by count(*) desc) x),
+    'systems',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (
+       select jsonb_build_object('label',label,'views',count(*)) j
+       from (
+         select case
+           when coalesce(device,'')='desktop' and os='windows' then 'Desktop / Windows'
+           when coalesce(device,'')='desktop' and os='macos' then 'Desktop / macOS'
+           when coalesce(device,'')='desktop' and os='linux' then 'Desktop / Linux'
+           when coalesce(device,'')='desktop' then 'Desktop / Other'
+           when coalesce(device,'')='mobile' and os='android' then 'Mobile / Android'
+           when coalesce(device,'')='mobile' and os='ios' then 'Mobile / iOS'
+           when coalesce(device,'')='mobile' then 'Mobile / Other'
+           else 'Unknown'
+         end as label
+         from ev where event='pageview'
+       ) s
+       group by label
+       order by count(*) desc) x),
     'languages',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(locale,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(locale,'?') order by count(*) desc) x),
+    'shares',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(share_channel,'unknown'),'views',count(*)) j from ev where event='share_click' group by coalesce(share_channel,'unknown') order by count(*) desc) x),
     'top_reports',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',report_token,'views',count(*)) j from ev where event='pageview' and report_token is not null group by report_token order by count(*) desc limit 8) x),
     'prev', jsonb_build_object(
       'pageviews',(select count(*) from evp where event='pageview'),

@@ -26,6 +26,9 @@ export type PublicReport = {
   pending?: boolean;
 };
 
+/** A public report enriched with its distance from the report being viewed. */
+export type NearbyReport = PublicReport & { distance_km: number };
+
 const RHODES = { el: "Δήμος Ρόδου", en: "Municipality of Rhodes", de: "Gemeinde Rhodos" };
 const KOS = { el: "Δήμος Κω", en: "Municipality of Kos", de: "Gemeinde Kos" };
 

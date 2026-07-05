@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
@@ -10,8 +12,28 @@ import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { useLocale } from "@/components/LocaleProvider";
 import { fill } from "@/lib/i18n";
 import { categoryLabel, CATEGORY_META } from "@/lib/categories";
+import { formatDistance } from "@/lib/geo";
 import { reportAgeDays, severityColor } from "@/lib/severity";
-import { shortDate, formatDate, type PublicReport } from "@/lib/mock";
+import { shortDate, formatDate, type NearbyReport, type PublicReport } from "@/lib/mock";
+import { trackEvent, type ShareChannel } from "@/lib/track";
+
+/**
+ * Session "tour" — the trail of report tokens visited in this tab. Swiping
+ * forward always targets the nearest report NOT already on the trail (no A↔B
+ * ping-pong); swiping back walks the trail in reverse. sessionStorage only:
+ * dies with the tab, no cookie, consistent with the no-tracking posture.
+ */
+const TOUR_KEY = "drosia_tour";
+const TOUR_MAX = 50;
+
+function readTour(): string[] {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(TOUR_KEY) ?? "[]");
+    return Array.isArray(raw) ? raw.filter((t): t is string => typeof t === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 function ShareGlyph({ name }: { name: "whatsapp" | "facebook" | "x" | "link" }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24" } as const;
@@ -53,17 +75,117 @@ function ShareGlyph({ name }: { name: "whatsapp" | "facebook" | "x" | "link" }) 
   }
 }
 
-export function TrackingScreen({ report }: { report: PublicReport }) {
+export function TrackingScreen({
+  report,
+  nearby = [],
+}: {
+  report: PublicReport;
+  nearby?: NearbyReport[];
+}) {
   const { locale, dict } = useLocale();
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [following, setFollowing] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+
+  // Swipe-through navigation (nearest report next, trail back).
+  const [tour, setTour] = useState<string[]>([]);
+  const [dragX, setDragX] = useState(0);
+  const [leaving, setLeaving] = useState<0 | 1 | -1>(0);
+  const gesture = useRef<{ x: number; y: number; horizontal?: boolean } | null>(null);
+  const navigating = useRef(false);
+
+  useEffect(() => {
+    const trail = readTour();
+    if (trail[trail.length - 1] !== report.public_token) {
+      // Arrived by swiping back → pop; otherwise this is a new forward step.
+      if (trail[trail.length - 2] === report.public_token) trail.pop();
+      else trail.push(report.public_token);
+      try {
+        sessionStorage.setItem(TOUR_KEY, JSON.stringify(trail.slice(-TOUR_MAX)));
+      } catch {
+        /* storage full/blocked — tour just won't persist */
+      }
+    }
+    window.setTimeout(() => setTour(trail.slice(-TOUR_MAX)), 0);
+  }, [report.public_token]);
+
+  const prevToken = tour.length > 1 ? tour[tour.length - 2] : null;
+  const next = useMemo(() => {
+    if (!nearby.length) return null;
+    return (
+      nearby.find((r) => !tour.includes(r.public_token)) ??
+      nearby.find((r) => r.public_token !== prevToken) ??
+      nearby[0]
+    );
+  }, [nearby, tour, prevToken]);
+
+  useEffect(() => {
+    if (next) router.prefetch(`/r/${next.public_token}`);
+  }, [next, router]);
+
+  function navigate(dir: 1 | -1, token: string) {
+    if (navigating.current) return;
+    navigating.current = true;
+    setLeaving(dir);
+    if (dir === 1) trackEvent("nearby_next", { reportToken: token });
+    // Let the slide-out play before the route change swaps the screen.
+    setTimeout(() => router.push(`/r/${token}`), 190);
+  }
+  const goNext = () => next && navigate(1, next.public_token);
+  const goPrev = () => prevToken && navigate(-1, prevToken);
+
+  function onTouchStart(e: React.TouchEvent) {
+    if (leaving) return;
+    const t = e.touches[0];
+    if (!t) return;
+    gesture.current = { x: t.clientX, y: t.clientY };
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    const g = gesture.current;
+    if (!g || leaving) return;
+    const t = e.touches[0];
+    if (!t) return;
+    const dx = t.clientX - g.x;
+    const dy = t.clientY - g.y;
+    if (g.horizontal === undefined) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; // not decided yet
+      g.horizontal = Math.abs(dx) > Math.abs(dy) * 1.3;
+    }
+    if (!g.horizontal) return;
+    // Rubber-band when there is nothing in that direction.
+    const blocked = (dx < 0 && !next) || (dx > 0 && !prevToken);
+    setDragX(blocked ? dx / 4 : dx);
+  }
+  function onTouchEnd() {
+    const g = gesture.current;
+    gesture.current = null;
+    if (!g?.horizontal) return;
+    if (dragX <= -64 && next) goNext();
+    else if (dragX >= 64 && prevToken) goPrev();
+    else setDragX(0);
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.key === "ArrowRight") goNext();
+      else if (e.key === "ArrowLeft") goPrev();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const resolved = report.status === "resolved";
   const days = reportAgeDays(report);
   const cat = CATEGORY_META[report.category];
   const catLabel = categoryLabel(report.category, locale);
   const pin = resolved ? "var(--success)" : severityColor(days);
+  const shellStyle = {
+    transform: `translateX(${leaving ? (leaving === 1 ? "-100%" : "100%") : dragX}px)`,
+    transition: leaving || dragX === 0 ? "transform 190ms ease" : "none",
+  };
 
   const timeline = [
     { label: dict.tracking.reported, date: shortDate(report.created_at), done: true },
@@ -81,14 +203,54 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
     },
   ];
 
+  function reportUrl(): string {
+    return `${window.location.origin}/r/${report.public_token}`;
+  }
+
+  function recordShare(channel: ShareChannel) {
+    trackEvent("share_click", { reportToken: report.public_token, shareChannel: channel });
+  }
+
+  function openShare(channel: Exclude<ShareChannel, "copy" | "native" | "other">) {
+    recordShare(channel);
+    const url = encodeURIComponent(reportUrl());
+    const text = encodeURIComponent(dict.tracking.shareTitle);
+    const targets: Record<typeof channel, string> = {
+      whatsapp: `https://wa.me/?text=${text}%20${url}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${url}`,
+      x: `https://twitter.com/intent/tweet?text=${text}&url=${url}`,
+    };
+    window.open(targets[channel], "_blank", "noopener,noreferrer");
+  }
+
   function copyLink() {
-    navigator.clipboard?.writeText(window.location.href).catch(() => {});
+    navigator.clipboard?.writeText(reportUrl()).catch(() => {});
+    recordShare("copy");
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
   }
 
+  async function nativeShare() {
+    if (!navigator.share) {
+      copyLink();
+      return;
+    }
+    try {
+      await navigator.share({ title: dict.tracking.shareTitle, url: reportUrl() });
+      recordShare("native");
+    } catch {
+      /* user cancelled or the platform refused the share sheet */
+    }
+  }
+
   return (
-    <div className="pb-8">
+    <div
+      className="pb-8"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={shellStyle}
+    >
       <AppBar showWordmark />
 
       <div className="px-5 pt-4">
@@ -155,13 +317,13 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
 
       {/* Share + secondary actions */}
       <div className="px-4 pt-5">
-        <button className="w-full rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast">
+        <button onClick={() => void nativeShare()} className="w-full rounded-2xl bg-ink px-4 py-3.5 font-display text-[15px] font-extrabold text-ink-contrast">
           📣 {dict.tracking.shareTitle}
         </button>
         <div className="mt-3 flex flex-wrap gap-2">
-          <ShareBtn label="WhatsApp"><ShareGlyph name="whatsapp" /></ShareBtn>
-          <ShareBtn label="Facebook"><ShareGlyph name="facebook" /></ShareBtn>
-          <ShareBtn label="X"><ShareGlyph name="x" /></ShareBtn>
+          <ShareBtn label="WhatsApp" onClick={() => openShare("whatsapp")}><ShareGlyph name="whatsapp" /></ShareBtn>
+          <ShareBtn label="Facebook" onClick={() => openShare("facebook")}><ShareGlyph name="facebook" /></ShareBtn>
+          <ShareBtn label="X" onClick={() => openShare("x")}><ShareGlyph name="x" /></ShareBtn>
           <button
             onClick={copyLink}
             className="flex h-11 min-w-[104px] flex-1 items-center justify-center gap-2 rounded-[13px] border border-primary bg-tint text-[13px] font-bold text-primary-ink"
@@ -210,10 +372,17 @@ export function TrackingScreen({ report }: { report: PublicReport }) {
       {/* Nearby */}
       <div className="px-4 pt-4">
         <h2 className="mb-2.5 font-display text-[14px] font-extrabold">{dict.tracking.nearby}</h2>
-        <div className="flex gap-2.5">
-          <NearbyCard emoji="♻️" label={categoryLabel("plastic", locale)} days={22} />
-          <NearbyCard emoji="🏖" label={categoryLabel("coast", locale)} days={71} />
-        </div>
+        {nearby.length ? (
+          <div className="flex gap-2.5">
+            {nearby.slice(0, 2).map((r) => (
+              <NearbyCard key={r.public_token} report={r} />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-[14px] border border-line bg-surface-card px-3 py-3 text-[12px] font-semibold text-muted">
+            No nearby public reports yet.
+          </div>
+        )}
       </div>
 
       <footer className="px-5 pb-2 pt-5 text-center text-[11px] text-muted">
@@ -291,28 +460,34 @@ function FlagDialog({ token, onClose }: { token: string; onClose: () => void }) 
   );
 }
 
-function ShareBtn({ label, children }: { label: string; children: React.ReactNode }) {
+function ShareBtn({ label, children, onClick }: { label: string; children: React.ReactNode; onClick: () => void }) {
   return (
-    <button className="flex h-11 min-w-[104px] flex-1 items-center justify-center gap-2 rounded-[13px] border border-line bg-surface text-[13px] font-bold text-ink">
+    <button onClick={onClick} className="flex h-11 min-w-[104px] flex-1 items-center justify-center gap-2 rounded-[13px] border border-line bg-surface text-[13px] font-bold text-ink">
       {children}
       {label}
     </button>
   );
 }
 
-function NearbyCard({ emoji, label, days }: { emoji: string; label: string; days: number }) {
-  const { dict } = useLocale();
+function NearbyCard({ report }: { report: NearbyReport }) {
+  const { locale, dict } = useLocale();
+  const days = reportAgeDays(report);
+  const label = categoryLabel(report.category, locale);
+  const cat = CATEGORY_META[report.category];
   return (
-    <div className="flex-1 overflow-hidden rounded-[14px] border border-line">
-      <PhotoPlaceholder className="h-16" pixel={false} />
+    <Link href={`/r/${report.public_token}`} className="flex-1 overflow-hidden rounded-[14px] border border-line bg-surface-card">
+      <PhotoPlaceholder className="h-16" pixel={false} src={report.photo_url} />
       <div className="px-2.5 py-2">
-        <div className="text-[11px] font-bold">
-          {emoji} {label}
+        <div className="truncate text-[11px] font-bold">
+          {cat.emoji} {label}
         </div>
-        <div className="tnum font-display text-[13px] font-black" style={{ color: severityColor(days) }}>
-          {days} {dict.severity.days}
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <span className="tnum font-display text-[13px] font-black" style={{ color: severityColor(days) }}>
+            {days} {dict.severity.days}
+          </span>
+          <span className="tnum text-[10px] font-bold text-muted">{formatDistance(report.distance_km)}</span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

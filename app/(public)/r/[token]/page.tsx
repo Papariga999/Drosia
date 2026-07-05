@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { TrackingScreen } from "@/components/screens/TrackingScreen";
 import { PendingScreen } from "@/components/screens/PendingScreen";
-import { getPublicReport, getPendingReportStatus } from "@/lib/reports";
+import { getPublicReport, getPendingReportStatus, listNearbyReports } from "@/lib/reports";
 
 /**
  * Report detail / Tracking — /r/<token>. The most-shared entry point.
@@ -19,7 +19,10 @@ export default async function TrackingPage({
 }) {
   const { token } = await params;
   const report = await getPublicReport(token);
-  if (report) return <TrackingScreen report={report} />;
+  if (report) {
+    const nearby = await listNearbyReports(report);
+    return <TrackingScreen report={report} nearby={nearby} />;
+  }
 
   const pending = await getPendingReportStatus(token);
   if (!pending) notFound();

@@ -2104,11 +2104,16 @@ interface WebAnalytics {
     pageviews: number;
     sessions: number;
     report_views: number;
+    avg_session_seconds: number | null;
+    median_session_seconds: number | null;
+    duration_sample: number;
     timeseries: { day: string; pageviews: number; sessions: number }[];
     sources: { label: string; views: number }[];
     countries: { label: string; views: number }[];
     devices: { label: string; views: number }[];
+    systems: { label: string; views: number }[];
     languages: { label: string; views: number }[];
+    shares: { label: string; views: number }[];
     top_reports: { label: string; views: number }[];
     prev: { pageviews: number; sessions: number; report_views: number };
   };
@@ -2133,6 +2138,17 @@ interface WebAnalytics {
 function deltaPct(cur: number, prev: number): number | null {
   if (!prev) return null;
   return Math.round(((cur - prev) / prev) * 100);
+}
+
+function fmtDurationSeconds(seconds: number | null | undefined): string {
+  if (!seconds || seconds <= 0) return "-";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes < 60) return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins ? `${hours}h ${mins}m` : `${hours}h`;
 }
 
 function AnalyticsKpi({ value, label, color, delta }: { value: number | string; label: string; color: string; delta?: number | null }) {
@@ -2227,9 +2243,10 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
         <div className="text-[13px] text-[#9DB1B5]">Loading…</div>
       ) : (
         <>
-          <div className="mb-4 grid grid-cols-5 gap-3">
+          <div className="mb-4 grid grid-cols-6 gap-3">
             <AnalyticsKpi value={web?.pageviews ?? 0} label="Page views" color="#00A6BC" delta={deltaPct(web?.pageviews ?? 0, prev?.pageviews ?? 0)} />
             <AnalyticsKpi value={sessions} label="Sessions (approx)" color="#2D6BD8" delta={deltaPct(sessions, prevSessions)} />
+            <AnalyticsKpi value={fmtDurationSeconds(web?.avg_session_seconds)} label="Avg session duration" color="#5B7378" />
             <AnalyticsKpi value={web?.report_views ?? 0} label="Report views" color="#1ECAD9" delta={deltaPct(web?.report_views ?? 0, prev?.report_views ?? 0)} />
             <AnalyticsKpi value={submitted} label={`Reports · ${days}d`} color="#1B8B4A" delta={deltaPct(submitted, submittedPrev)} />
             <AnalyticsKpi value={`${conv}%`} label="Session → report" color="#B7820E" delta={deltaPct(conv, convPrev)} />
@@ -2264,12 +2281,18 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
             <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" />
             <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono hrefFor={(token) => `/r/${token}`} />
             <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" />
+            <BreakdownCard title="Operating systems" rows={web?.systems ?? []} empty="No OS data yet" />
             <BreakdownCard
               title="Languages"
               rows={(web?.languages ?? []).map((r) => ({ ...r, label: LANGUAGE_LABELS[r.label] ?? r.label }))}
               empty="No data yet"
             />
             <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" />
+            <BreakdownCard
+              title="Share options"
+              rows={(web?.shares ?? []).map((r) => ({ ...r, label: SHARE_LABELS[r.label] ?? r.label }))}
+              empty="No share clicks yet"
+            />
           </div>
         </>
       )}
@@ -2511,6 +2534,15 @@ function FunnelRow({ steps }: { steps: { label: string; value: number; color: st
 
 /** UI-language codes → English names for the admin-only "Languages" breakdown. */
 const LANGUAGE_LABELS: Record<string, string> = { el: "Greek", en: "English", de: "German", "?": "Unknown" };
+const SHARE_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  facebook: "Facebook",
+  x: "X",
+  copy: "Copy link",
+  native: "Native share",
+  other: "Other",
+  unknown: "Unknown",
+};
 
 function BreakdownCard({ title, rows, empty, mono, hrefFor }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean; hrefFor?: (label: string) => string }) {
   const max = Math.max(1, ...rows.map((r) => r.views));

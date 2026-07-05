@@ -10,7 +10,21 @@ export const LOCALES = ["el", "en", "de"] as const;
 export type Locale = (typeof LOCALES)[number];
 export const DEFAULT_LOCALE: Locale = "el";
 
+/** Short code for the compact/segmented switcher (uppercased ISO-639-1). */
 export const LOCALE_LABEL: Record<Locale, string> = { el: "EL", en: "EN", de: "DE" };
+
+/**
+ * Native language name (endonym) for the dropdown switcher. A user reads their
+ * own language name in their own script, independent of the current UI locale —
+ * that's what makes the picker usable once we grow past a few languages.
+ * When adding a locale, add its endonym here (fr: "Français", it: "Italiano",
+ * es: "Español", hr: "Hrvatski", …).
+ */
+export const LOCALE_NATIVE_LABEL: Record<Locale, string> = {
+  el: "Ελληνικά",
+  en: "English",
+  de: "Deutsch",
+};
 
 const DICTS = { en, el, de } as const;
 export type Dict = typeof en;

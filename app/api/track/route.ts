@@ -14,13 +14,26 @@ export const runtime = "nodejs";
  */
 const LOCALES = ["el", "en", "de"];
 // Allowlist of analytics events (anything else is coerced to 'pageview').
-const EVENTS = ["pageview", "report_start", "photo_added", "geolocate", "submit_success", "submit_fail", "share_click", "map_open"];
+const EVENTS = ["pageview", "report_start", "photo_added", "geolocate", "submit_success", "submit_fail", "share_click", "map_open", "session_duration", "nearby_next"];
+const SHARE_CHANNELS = ["whatsapp", "facebook", "x", "copy", "native", "other"];
+const MAX_SESSION_DURATION_MS = 4 * 60 * 60 * 1000;
 const BOT_RE = /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|headless|lighthouse|pingdom|gtmetrix|uptime|monitor|preview|curl|wget/i;
 const MOBILE_RE = /mobile|android|iphone|ipad|ipod|iemobile|opera mini/i;
 
 function deviceClass(ua: string): "bot" | "mobile" | "desktop" {
   if (!ua || BOT_RE.test(ua)) return "bot";
   return MOBILE_RE.test(ua) ? "mobile" : "desktop";
+}
+
+function osFamily(ua: string, platformHeader: string | null): "windows" | "macos" | "android" | "ios" | "linux" | "other" {
+  const platform = (platformHeader ?? "").replaceAll('"', "").toLowerCase();
+  const haystack = `${platform} ${ua}`.toLowerCase();
+  if (haystack.includes("android")) return "android";
+  if (/iphone|ipad|ipod|\bios\b/.test(haystack) || (haystack.includes("macintosh") && /\bmobile\b/.test(haystack))) return "ios";
+  if (haystack.includes("windows")) return "windows";
+  if (haystack.includes("mac os") || haystack.includes("macintosh") || haystack.includes("macos")) return "macos";
+  if (haystack.includes("linux")) return "linux";
+  return "other";
 }
 
 /** Best traffic-source attribution: utm_source wins, else the external referrer host, else direct. */
@@ -52,7 +65,7 @@ export async function POST(req: Request): Promise<Response> {
   const device = deviceClass(ua);
   if (device === "bot") return new NextResponse(null, { status: 204 });
 
-  let body: { event?: string; path?: string; ref?: string; sid?: string; locale?: string };
+  let body: { event?: string; path?: string; ref?: string; sid?: string; locale?: string; shareChannel?: string; durationMs?: number };
   try {
     body = await req.json();
   } catch {
@@ -74,14 +87,27 @@ export async function POST(req: Request): Promise<Response> {
   const host = req.headers.get("host");
   const source = normalizeSource(rawPath, typeof body.ref === "string" ? body.ref : "", host);
   const country = (req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
+  const os = osFamily(ua, req.headers.get("sec-ch-ua-platform"));
   const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : null;
   const locale = typeof body.locale === "string" && LOCALES.includes(body.locale) ? body.locale : null;
+  const shareChannel =
+    event === "share_click" && typeof body.shareChannel === "string" && SHARE_CHANNELS.includes(body.shareChannel)
+      ? body.shareChannel
+      : null;
+  const durationMs =
+    event === "session_duration" && typeof body.durationMs === "number" && Number.isFinite(body.durationMs)
+      ? Math.max(0, Math.min(MAX_SESSION_DURATION_MS, Math.round(body.durationMs)))
+      : null;
 
   const admin = getSupabaseAdmin();
   try {
-    await admin
-      .from("web_events")
-      .insert({ event, path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
+    const row = { event, path: pathname, report_token: reportToken, source, country, device, os, share_channel: shareChannel, duration_ms: durationMs, sid, locale };
+    const { error } = await admin.from("web_events").insert(row as never);
+    if (error && /os|share_channel|duration_ms|schema cache|column|PGRST204/i.test(`${error.code ?? ""} ${error.message}`)) {
+      await admin
+        .from("web_events")
+        .insert({ event, path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
+    }
   } catch {
     /* table not migrated yet / transient — analytics is best-effort */
   }

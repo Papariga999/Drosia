@@ -14,7 +14,12 @@ function getSid(): string {
   return sid;
 }
 
-export function trackEvent(event: string, opts?: { reportToken?: string; locale?: string }): void {
+export type ShareChannel = "whatsapp" | "facebook" | "x" | "copy" | "native" | "other";
+
+export function trackEvent(
+  event: string,
+  opts?: { reportToken?: string; locale?: string; shareChannel?: ShareChannel; durationMs?: number },
+): void {
   if (typeof window === "undefined") return;
   try {
     const path = opts?.reportToken ? `/r/${opts.reportToken}` : window.location.pathname + window.location.search;
@@ -28,6 +33,8 @@ export function trackEvent(event: string, opts?: { reportToken?: string; locale?
       // SSRs as 'el' and LocaleProvider only corrects in an effect — so relying on
       // it alone mis-attributes the first pageview of a session.
       locale: opts?.locale || document.documentElement.lang || "",
+      shareChannel: opts?.shareChannel,
+      durationMs: opts?.durationMs,
     });
     void fetch("/api/track", {
       method: "POST",

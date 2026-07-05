@@ -3,7 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { LOCALES, type Locale } from "./i18n";
 import { isReportCategory, type ReportCategory } from "./categories";
 import { anonymizedPhotoUrl } from "./storage";
-import type { PublicReport } from "./mock";
+import { distanceKm } from "./geo";
+import type { NearbyReport, PublicReport } from "./mock";
 import { MOCK_REPORTS } from "./mock";
 
 /**
@@ -206,6 +207,22 @@ export async function listPendingReportPins(limit = 300): Promise<PublicReport[]
     console.error("[listPendingReportPins] read failed:", e);
     return [];
   }
+}
+
+/**
+ * Geographically closest public reports to the one being viewed — powers the
+ * nearby cards and the swipe-to-next navigation on /r/<token>. Reuses the
+ * public-view read (anonymized photos included) and sorts by haversine
+ * distance in process; at launch scale (one island region, ≤200 public
+ * reports) that beats maintaining a PostGIS RPC on the public read path.
+ */
+export async function listNearbyReports(current: PublicReport, limit = 6): Promise<NearbyReport[]> {
+  const all = await listPublicReports(200);
+  return all
+    .filter((r) => r.public_token !== current.public_token)
+    .map((r) => ({ ...r, distance_km: distanceKm(current.lat, current.lng, r.lat, r.lng) }))
+    .sort((a, b) => a.distance_km - b.distance_km)
+    .slice(0, limit);
 }
 
 export interface ScorecardEntry {
