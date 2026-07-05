@@ -43,6 +43,7 @@ export function distanceKm(lat1: number, lng1: number, lat2: number, lng2: numbe
 
 /** "320 m" under 1 km, "1.2 km" under 10, else "23 km" — SI, locale-neutral. */
 export function formatDistance(km: number): string {
-  if (km < 1) return `${Math.max(10, Math.round((km * 1000) / 10) * 10)} m`;
+  // 0.995+ would round to "1000 m"; show it as km instead.
+  if (km < 0.995) return `${Math.max(10, Math.round((km * 1000) / 10) * 10)} m`;
   return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }
