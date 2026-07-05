@@ -395,7 +395,7 @@ export function TrackingScreen({
       </div>
 
       <footer className="px-5 pb-2 pt-5 text-center text-[11px] text-muted">
-        Drosia · Datenschutz · Impressum ·{" "}
+        Drosia · {dict.footer.privacy} · {dict.footer.imprint} ·{" "}
         <button onClick={() => setFlagOpen(true)} className="underline">⚐ {dict.tracking.flag}</button>
       </footer>
     </div>

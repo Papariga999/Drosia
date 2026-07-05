@@ -12,6 +12,11 @@
     "open": "open",
     "loading": "Loading…"
   },
+  "footer": {
+    "privacy": "Privacy",
+    "imprint": "Legal notice",
+    "terms": "Terms"
+  },
   "status": {
     "submitted": "Submitted",
     "notified": "Forwarded",

@@ -12,6 +12,11 @@
     "open": "offen",
     "loading": "Lädt…"
   },
+  "footer": {
+    "privacy": "Datenschutz",
+    "imprint": "Impressum",
+    "terms": "AGB"
+  },
   "status": {
     "submitted": "Gemeldet",
     "notified": "Weitergeleitet",

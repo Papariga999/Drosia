@@ -214,7 +214,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
       </div>
 
       <footer className="px-6 pb-6 text-center text-[11px] text-muted">
-        Drosia · drosia.eu · Datenschutz · Impressum · AGB
+        Drosia · drosia.eu · {dict.footer.privacy} · {dict.footer.imprint} · {dict.footer.terms}
       </footer>
     </div>
   );
