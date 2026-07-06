@@ -1,12 +1,14 @@
 import type { SVGProps } from "react";
-import { Car, HelpCircle, Leaf, Sofa } from "lucide-react";
+import { HelpCircle } from "lucide-react";
 import type { ReportCategory } from "@/lib/categories";
 
 /**
  * Litter-type icon set (handover 2a) — one line icon per report category.
- * Same grammar as the core set: 24×24 grid, 2px stroke, rounded caps/joins,
- * single color (currentColor). Standard shapes come from Lucide; the
- * litter-specific ones are drawn to match.
+ * Paths are verbatim from the design file "Drosia Improvements" §2a
+ * (24×24 grid, 2px stroke, rounded caps/joins, single currentColor).
+ * Categories without a §2a source (tires, appliances) are drawn to the same
+ * grammar; §2a icons without a category yet (cigarette butts, dog waste,
+ * water pollution) stay in the design file until the enum grows.
  */
 type IconProps = SVGProps<SVGSVGElement> & { size?: number };
 
@@ -29,51 +31,109 @@ function Base({ size = 18, children, ...rest }: IconProps) {
   );
 }
 
-/** Illegal dumping — tied trash bag with a second bag behind. */
+/** Illegal dumping — tied trash bag with a second bag behind (§2a-1). */
 function TrashBags(props: IconProps) {
   return (
     <Base {...props}>
-      <path d="M9 8c-2.6 1.9-4.2 4.9-4.2 7.9C4.8 18.8 7 21 9.9 21s5.1-2.2 5.1-5.1c0-3-1.6-6-4.2-7.9" />
-      <path d="m9 8-.9-3.3M10.8 8l.9-3.3M8.1 4.7h3.6" />
-      <path d="M17.3 11.6c1.2 1.2 1.9 2.9 1.9 4.5 0 2.1-1.4 3.9-3.4 4.4" />
+      <path d="M9 9c-3.2 0-5.5 3.2-5.5 6.5V18a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2v-2.5C14.5 12.2 12.2 9 9 9Z" />
+      <path d="M7.6 9 6.8 6.5M10.4 9l.8-2.5M6.5 6.5h5" />
+      <path d="M16 20h2.5a2 2 0 0 0 2-2v-2c0-2.6-1.6-5-4-5.4" />
+      <path d="M17.3 10.7 18 8.8" />
     </Base>
   );
 }
 
-/** Beach litter — parasol over a wave. */
+/** Beach litter — parasol over a wave (§2a-2). */
 function BeachWave(props: IconProps) {
   return (
     <Base {...props}>
-      <path d="M12 3a8 8 0 0 0-8 7.4h16A8 8 0 0 0 12 3Z" />
-      <path d="M12 10.4V16" />
-      <path d="M3 20c1.5-1.5 3.5-1.5 5 0s3.5 1.5 5 0 3.5-1.5 5 0 2 1 3 .4" />
+      <path d="M12 3a7 7 0 0 1 7 7H5a7 7 0 0 1 7-7Z" />
+      <path d="M12 10v7" />
+      <path d="M2 20c2-1.6 4-1.6 6 0s4 1.6 6 0 4-1.6 6 0" />
     </Base>
   );
 }
 
-/** Litter — overflowing public bin. */
+/** Litter — overflowing public bin (§2a-3). */
 function OverflowingBin(props: IconProps) {
   return (
     <Base {...props}>
-      <path d="M5.5 9.5h13" />
-      <path d="m7 9.5.8 10a2 2 0 0 0 2 1.9h4.4a2 2 0 0 0 2-1.9l.8-10" />
-      <path d="m9 6.5-.7-2.7M12.3 6 12.5 3M15.3 6.7l1.5-2.4" />
+      <path d="M5 10h14" />
+      <path d="M6.2 10 7 20a1.8 1.8 0 0 0 1.8 1.6h6.4A1.8 1.8 0 0 0 17 20l.8-10" />
+      <circle cx="9" cy="5.2" r="1.2" />
+      <path d="M12.6 6.6 13.6 3.4" />
+      <path d="M16 6.8 18 5" />
     </Base>
   );
 }
 
-/** Plastic — bottle. */
+/** Bulky waste — dumped sofa (§2a-4). */
+function Sofa(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M5 11V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3" />
+      <path d="M3 13a2 2 0 0 1 4 0v1h10v-1a2 2 0 0 1 4 0v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+      <path d="M5 19v1.5M19 19v1.5" />
+    </Base>
+  );
+}
+
+/** Construction debris — brick stack with dust (§2a-5). */
+function Bricks(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="3.5" y="15" width="7" height="5" rx="1" />
+      <rect x="13.5" y="15" width="7" height="5" rx="1" />
+      <rect x="8.5" y="9" width="7" height="5" rx="1" />
+      <path d="M5.5 6.5 6 4.5M12 6V4M18.5 6.5 18 4.5" />
+    </Base>
+  );
+}
+
+/** Sewage / hazard — barrel with a drip (§2a-6 "Hazardous waste"). */
+function BarrelDrip(props: IconProps) {
+  return (
+    <Base {...props}>
+      <rect x="7" y="3" width="10" height="12.5" rx="1.8" />
+      <path d="M7 7.5h10M7 11h10" />
+      <path d="M12 22c-1.05 0-1.9-.8-1.9-1.8 0-1.1 1.9-3 1.9-3s1.9 1.9 1.9 3c0 1-.85 1.8-1.9 1.8Z" />
+    </Base>
+  );
+}
+
+/** Plastic — bottle (§2a-7 "Broken glass" outline, without the crack). */
 function Bottle(props: IconProps) {
   return (
     <Base {...props}>
-      <path d="M10.3 2.5h3.4" />
-      <path d="M10.8 2.5v2.6c0 .5-.2 1-.6 1.3l-1 1a3.2 3.2 0 0 0-1 2.3V19a2 2 0 0 0 2 2h3.6a2 2 0 0 0 2-2v-9.3c0-.9-.35-1.7-1-2.3l-1-1a1.9 1.9 0 0 1-.6-1.3V2.5" />
-      <path d="M8.2 12.5h7.6M8.2 16.5h7.6" />
+      <path d="M10.5 2.5h3" />
+      <path d="M11 2.5v4.2L9 10v9a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-9l-2-3.3V2.5" />
     </Base>
   );
 }
 
-/** Tires — tire with tread marks. */
+/** Abandoned vehicle — car (§2a-10). */
+function Car(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H8.5c-1 0-1.7.6-2.2 1.4L5 10.5c-1.7.3-3 .9-3 2.5v3c0 .6.4 1 1 1h2" />
+      <circle cx="7" cy="17" r="2" />
+      <path d="M9 17h6" />
+      <circle cx="17" cy="17" r="2" />
+    </Base>
+  );
+}
+
+/** Green waste — leaf (§2a-11 "Green space"). */
+function Leaf(props: IconProps) {
+  return (
+    <Base {...props}>
+      <path d="M6 21C6 11.5 12 4.5 21 3.5c0 9.5-6 16.5-15 17.5Z" />
+      <path d="M6 21c2-6 6-10.5 11-13.5" />
+    </Base>
+  );
+}
+
+/** Tires — tire with tread marks (no §2a source, same grammar). */
 function Tire(props: IconProps) {
   return (
     <Base {...props}>
@@ -84,35 +144,13 @@ function Tire(props: IconProps) {
   );
 }
 
-/** Appliances — dumped fridge. */
+/** Appliances — dumped fridge (no §2a source, same grammar). */
 function Fridge(props: IconProps) {
   return (
     <Base {...props}>
       <rect x="7" y="2.5" width="10" height="19" rx="2" />
       <path d="M7 9.5h10" />
       <path d="M14.5 5.5v1.6M14.5 12.5v2.6" />
-    </Base>
-  );
-}
-
-/** Hazardous waste — barrel with a drip. */
-function BarrelDrip(props: IconProps) {
-  return (
-    <Base {...props}>
-      <rect x="6.5" y="3" width="11" height="13" rx="1.5" />
-      <path d="M6.5 7.3h11M6.5 11.7h11" />
-      <path d="M12 18.4c-.8.9-1.3 1.7-1.3 2.3a1.3 1.3 0 0 0 2.6 0c0-.6-.5-1.4-1.3-2.3Z" />
-    </Base>
-  );
-}
-
-/** Construction debris — bricks. */
-function Bricks(props: IconProps) {
-  return (
-    <Base {...props}>
-      <rect x="3.5" y="7.5" width="17" height="11" rx="1" />
-      <path d="M3.5 13h17" />
-      <path d="M12 7.5V13M8 13v5.5M16 13v5.5" />
     </Base>
   );
 }
@@ -124,9 +162,9 @@ const CATEGORY_ICONS: Record<ReportCategory, (props: IconProps) => React.JSX.Ele
   plastic: Bottle,
   tires: Tire,
   appliances: Fridge,
-  vehicle: (p) => <Car size={p.size ?? 18} className={p.className} aria-hidden />,
-  green_waste: (p) => <Leaf size={p.size ?? 18} className={p.className} aria-hidden />,
-  bulky: (p) => <Sofa size={p.size ?? 18} className={p.className} aria-hidden />,
+  vehicle: Car,
+  green_waste: Leaf,
+  bulky: Sofa,
   coast: BeachWave,
   sewage: BarrelDrip,
   other: (p) => <HelpCircle size={p.size ?? 18} className={p.className} aria-hidden />,

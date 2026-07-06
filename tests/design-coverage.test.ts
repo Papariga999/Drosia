@@ -69,6 +69,19 @@ const designCoverage = [
   },
 ];
 
+// Site-review improvements design (sections 2a + 3a–3d) lives in
+// design_handoff/, not the Projektdokumentation folder.
+const improvementsDesign = join(root, "design_handoff", "Drosia Improvements (standalone).html");
+const improvementsImplementation = [
+  "components/ui/CategoryIcon.tsx", // 2a verbatim litter-type icons
+  "app/manifest.ts", // 3a PWA manifest
+  "public/brand/favicon.svg", // 3a favicon + app icons
+  "public/brand/app-icon-512.png",
+  "public/brand/app-icon-maskable-512.png",
+  "public/brand/apple-touch-icon-180.png",
+  "app/opengraph-image.tsx", // 3d default share card
+];
+
 describe("design artifact coverage", () => {
   it.each(designCoverage)("$design has a corresponding route/component scaffold", ({ design, implementation }) => {
     if (hasDesignAssets) {
@@ -76,6 +89,16 @@ describe("design artifact coverage", () => {
     }
 
     for (const file of implementation) {
+      expect(existsSync(join(root, file)), `${file} exists`).toBe(true);
+    }
+  });
+
+  it("Drosia Improvements (2a icons + 3a brand assets + 3d OG) is implemented", () => {
+    if (existsSync(join(root, "design_handoff"))) {
+      expect(existsSync(improvementsDesign), "improvements design file exists").toBe(true);
+    }
+
+    for (const file of improvementsImplementation) {
       expect(existsSync(join(root, file)), `${file} exists`).toBe(true);
     }
   });

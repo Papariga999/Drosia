@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 
@@ -11,10 +11,25 @@ import "./globals.css";
  * Family names are exposed as --font-display / --font-sans in globals.css.
  */
 export const metadata: Metadata = {
-  title: "Drosia",
+  title: "Drosia — Report litter",
   description:
     "Report litter & environmental issues to the responsible authority. Keep it fresh & clean.",
   applicationName: "Drosia",
+  // Brand assets per design §3a: SVG favicon first (reads on light & dark
+  // tabs), PNG fallbacks, iOS touch icon. Files exported from the design
+  // bundle into public/brand/. The PWA manifest is app/manifest.ts.
+  icons: {
+    icon: [
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/favicon-16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon-180.png", sizes: "180x180" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#00B4C8",
 };
 
 // Every route renders per request: the CSP script nonce (middleware.ts) is
