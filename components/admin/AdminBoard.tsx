@@ -325,6 +325,25 @@ export function AdminBoard() {
     }
   }
 
+  async function resolve(row: AdminReportRow) {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/reports/resolve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: row.id }),
+      });
+      const data = (await res.json()) as { error?: string };
+      flash(res.ok ? "✓ Marked resolved · followers notified" : data.error ?? "Resolve failed");
+      const list = await fetchReports();
+      setSelected(list.find((r) => r.id === row.id) ?? null);
+    } catch {
+      flash("Resolve failed — network error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function notifyNow(row: AdminReportRow) {
     setBusy(true);
     try {
@@ -444,6 +463,7 @@ export function AdminBoard() {
               onVisibility={(hidden) => setVisibility(selected, hidden)}
               onDelete={() => deleteReport(selected)}
               onNotify={() => notifyNow(selected)}
+              onResolve={() => resolve(selected)}
             />
           )}
           {screen === "status" && <StatusView flash={flash} />}
@@ -862,6 +882,7 @@ function DetailView({
   onVisibility,
   onDelete,
   onNotify,
+  onResolve,
 }: {
   report: AdminReportRow;
   busy: boolean;
@@ -872,6 +893,7 @@ function DetailView({
   onVisibility: (hidden: boolean) => void;
   onDelete: () => void;
   onNotify: () => void;
+  onResolve: () => void;
 }) {
   const [reason, setReason] = useState("private_person");
   const [editing, setEditing] = useState(false);
@@ -1073,6 +1095,16 @@ function DetailView({
                   className="rounded-[10px] border border-[#9FD8E0] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#00A6BC] hover:border-primary disabled:opacity-50"
                 >
                   ✉ Notify now
+                </button>
+              )}
+              {(report.status === "in_review" || report.status === "notified") && (
+                <button
+                  onClick={onResolve}
+                  disabled={busy}
+                  title="Marks the report as fixed (terminal) and push-notifies followers"
+                  className="rounded-[10px] border border-[#9FE0C0] bg-white px-4 py-2 font-display text-[13px] font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50"
+                >
+                  ✅ Mark resolved
                 </button>
               )}
               <button

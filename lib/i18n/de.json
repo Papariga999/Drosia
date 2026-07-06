@@ -304,7 +304,9 @@
   },
   "push": {
     "forwardedTitle": "An die Behörde weitergeleitet",
-    "forwardedBody": "Eine von dir verfolgte Meldung wurde an die zuständige Behörde gesendet."
+    "forwardedBody": "Eine von dir verfolgte Meldung wurde an die zuständige Behörde gesendet.",
+    "resolvedTitle": "Behoben ✅",
+    "resolvedBody": "Eine von dir verfolgte Meldung wurde als behoben markiert."
   },
   "meta": {
     "title": "Drosia — Müll der zuständigen Behörde melden",

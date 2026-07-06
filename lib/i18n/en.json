@@ -304,7 +304,9 @@
   },
   "push": {
     "forwardedTitle": "Forwarded to the authority",
-    "forwardedBody": "A report you follow was sent to the responsible authority."
+    "forwardedBody": "A report you follow was sent to the responsible authority.",
+    "resolvedTitle": "Resolved ✅",
+    "resolvedBody": "A report you follow was marked as resolved."
   },
   "meta": {
     "title": "Drosia — report litter to the responsible authority",
