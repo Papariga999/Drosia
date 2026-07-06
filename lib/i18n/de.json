@@ -113,6 +113,7 @@
     "nearbySub": "Diese offenen Meldungen liegen keine 100 m entfernt. Ist es dieselbe Stelle, folge ihr, statt doppelt zu melden.",
     "nearbySame": "Ist dasselbe — folgen",
     "nearbyNew": "Nein, das ist neu — weiter",
+    "removePhoto": "Foto entfernen",
     "manualHint": "Oder Koordinaten eingeben",
     "lat": "Breitengrad",
     "lng": "Längengrad",

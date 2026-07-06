@@ -113,6 +113,7 @@
     "nearbySub": "These open reports are within 100 m. If it's the same spot, follow it instead of reporting it twice.",
     "nearbySame": "It's the same — follow it",
     "nearbyNew": "No, this is new — continue",
+    "removePhoto": "Remove photo",
     "manualHint": "Or enter coordinates",
     "lat": "Latitude",
     "lng": "Longitude",

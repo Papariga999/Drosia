@@ -337,7 +337,7 @@ export function ReportFlow() {
                   <img src={src} alt="" className="h-full w-full object-cover" />
                   <button
                     onClick={() => setFiles((f) => f.filter((_, idx) => idx !== i))}
-                    aria-label="Remove photo"
+                    aria-label={dict.flow.removePhoto}
                     className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink-fixed/80 text-white"
                   >
                     <X size={12} aria-hidden />

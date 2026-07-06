@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Check, CheckCircle2, Flag, Landmark, Lock, Share2 } from "lucide-react";
-import { followReport } from "@/lib/push/client";
+import { canFollow, followReport } from "@/lib/push/client";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
@@ -90,6 +90,15 @@ export function TrackingScreen({
   const [copied, setCopied] = useState(false);
   const [following, setFollowing] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+
+  // Follow needs Web-Push support + a VAPID key (WO-6, mirrors the success
+  // screen). Detected in an effect: canFollow() reads window/navigator, so
+  // checking it during render would mismatch the server-rendered HTML.
+  const [pushSupported, setPushSupported] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPushSupported(canFollow());
+  }, []);
 
   // Swipe-through navigation (nearest report next, trail back).
   const [tour, setTour] = useState<string[]>([]);
@@ -366,23 +375,27 @@ export function TrackingScreen({
           <button className="flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] border-success bg-surface-card px-3 py-3 font-display text-[13px] font-extrabold text-success">
             <CheckCircle2 size={15} aria-hidden /> {dict.tracking.looksClean}
           </button>
-          <button
-            onClick={async () => {
-              if (following) return;
-              const r = await followReport(report.public_token);
-              if (r === "followed") setFollowing(true);
-            }}
-            aria-pressed={following}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] px-3 py-3 font-display text-[13px] font-extrabold ${
-              following
-                ? "border-primary bg-primary text-white"
-                : "border-primary bg-surface-card text-primary-ink"
-            }`}
-          >
-            <Bell size={15} aria-hidden /> {following ? dict.tracking.following : dict.tracking.follow}
-          </button>
+          {pushSupported && (
+            <button
+              onClick={async () => {
+                if (following) return;
+                const r = await followReport(report.public_token);
+                if (r === "followed") setFollowing(true);
+              }}
+              aria-pressed={following}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] px-3 py-3 font-display text-[13px] font-extrabold ${
+                following
+                  ? "border-primary bg-primary text-white"
+                  : "border-primary bg-surface-card text-primary-ink"
+              }`}
+            >
+              <Bell size={15} aria-hidden /> {following ? dict.tracking.following : dict.tracking.follow}
+            </button>
+          )}
         </div>
-        <p className="mt-2 text-center text-[11px] text-muted">{dict.tracking.followDesc}</p>
+        {pushSupported && (
+          <p className="mt-2 text-center text-[11px] text-muted">{dict.tracking.followDesc}</p>
+        )}
       </div>
 
       {/* Mini-map */}
