@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import { Nunito, Mulish } from "next/font/google";
 import "leaflet/dist/leaflet.css";
 import "./globals.css";
 import { SITE_URL } from "@/lib/site-url";
@@ -9,10 +10,23 @@ import { getDict, localeFromAcceptLanguage, type Locale } from "@/lib/i18n";
  * Drosia type system (see design handoff "Design System"):
  *  - Nunito  → display & numbers (700/800/900), tabular-nums on all figures.
  *  - Mulish  → body & UI (400/500/600/700).
- * Loaded via Google Fonts with the Greek + Latin subsets (the app is
- * multilingual EL/EN/DE). Self-host for production/EU.
- * Family names are exposed as --font-display / --font-sans in globals.css.
+ * Self-hosted via next/font (no request to Google — EU/GDPR + LCP). Neither
+ * family ships a Greek subset on Google Fonts, so Greek text intentionally
+ * falls back to system-ui (exactly as it did with the CDN <link> before).
+ * Exposed as --font-display / --font-sans, consumed in globals.css/tailwind.
  */
+const nunito = Nunito({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const mulish = Mulish({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-sans",
+  display: "swap",
+});
+
 const OG_LOCALE: Record<Locale, string> = { el: "el_GR", en: "en_GB", de: "de_DE" };
 
 // Per-request so the title/description and <html lang> match the visitor's
@@ -72,15 +86,7 @@ export default async function RootLayout({
   // with a manual language choice — see LocaleProvider).
   const locale = localeFromAcceptLanguage((await headers()).get("accept-language"));
   return (
-    <html lang={locale}>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Mulish:wght@400;500;600;700&display=swap&subset=greek,latin,latin-ext"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang={locale} className={`${nunito.variable} ${mulish.variable}`}>
       <body>{children}</body>
     </html>
   );

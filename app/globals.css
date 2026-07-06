@@ -11,9 +11,9 @@
 :root {
   color-scheme: light dark;
 
-  /* Type families (loaded via Google Fonts in the root layout) */
-  --font-display: "Nunito", system-ui, sans-serif;
-  --font-sans: "Mulish", system-ui, sans-serif;
+  /* Type families: --font-display / --font-sans are injected by next/font on
+     <html> (self-hosted Nunito/Mulish — see app/layout.tsx). No :root values
+     here or they'd fight the injected class in the cascade. */
 
   /* Brand — constant across themes */
   --primary: #00b4c8;
