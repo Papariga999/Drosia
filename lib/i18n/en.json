@@ -301,5 +301,52 @@
     "emptyTitle": "Your first report changes something",
     "emptyBody": "No reports yet. Start now.",
     "emptyCta": "Report"
+  },
+  "push": {
+    "forwardedTitle": "Forwarded to the authority",
+    "forwardedBody": "A report you follow was sent to the responsible authority."
+  },
+  "meta": {
+    "title": "Drosia — report litter to the responsible authority",
+    "description": "See it. Report it. Watch what happens. Report litter and environmental issues in under a minute — no account. Drosia forwards each report to the responsible authority and tracks it publicly."
+  },
+  "legal": {
+    "back": "Back to start",
+    "updated": "Last updated",
+    "reviewNote": "Draft for review — complete the operator details and have the text checked legally before launch.",
+    "privacy": {
+      "title": "Privacy",
+      "sections": [
+        { "h": "The short version", "p": "Drosia works without an account. We don't ask for your name or email, we don't sell data, and we don't track you across the web. You report a problem; we forward it to the responsible authority and show its status publicly." },
+        { "h": "What we process", "p": "The photo(s) you send, the location of the problem (from the photo, your device's GPS, or a pin you set), the category, and an optional description. A random device token stored in your browser lets you find your own reports and receive updates — it is not linked to your identity." },
+        { "h": "Photos and anonymisation", "p": "Before a photo is shown publicly it is automatically anonymised — faces and vehicle number plates are obscured. Original photos stay private and are only accessible to our moderation for review. Please don't photograph identifiable people or private property." },
+        { "h": "What becomes public", "p": "The anonymised photo, the approximate location, the category and the status are shown on the public map and the report's tracking page, and are forwarded to the responsible public authority." },
+        { "h": "Processors we use", "p": "Hosting and database (Supabase), email delivery to authorities (Resend), hosting and privacy-friendly, cookieless analytics (Vercel), and map tiles and place lookup (OpenStreetMap / Nominatim). Each processes data only to run this service." },
+        { "h": "Retention", "p": "Reports and their status are kept as long as they are useful for public accountability. Original (non-anonymised) photos are kept only as long as needed for moderation and abuse prevention." },
+        { "h": "Your rights", "p": "You can ask us to access or delete a report, or dispute content. Use the \"Report / dispute\" button on any public report, or contact us. Under the GDPR you also have the right to lodge a complaint with a supervisory authority." },
+        { "h": "Contact", "p": "[Operator name], [address] — [email]." }
+      ]
+    },
+    "imprint": {
+      "title": "Legal notice",
+      "sections": [
+        { "h": "Operator", "p": "[Operator name / legal form], [street and number], [postal code and city], [country]." },
+        { "h": "Represented by", "p": "[Name(s) of the representative(s)]." },
+        { "h": "Contact", "p": "Email: [email]. [Phone, if applicable]." },
+        { "h": "VAT / register", "p": "[VAT ID and/or commercial-register entry, if applicable]." },
+        { "h": "Responsible for content", "p": "[Name and address of the person responsible for the content]." }
+      ]
+    },
+    "terms": {
+      "title": "Terms",
+      "sections": [
+        { "h": "What Drosia is", "p": "Drosia is a free tool for reporting litter and environmental issues to the responsible public authority. Reports are statements by users, not official findings by an authority." },
+        { "h": "Using it responsibly", "p": "Only report what you have the right to photograph. Document the problem, not people: no identifiable individuals, and no private property or private persons singled out. Reports that target private individuals are removed." },
+        { "h": "Your content", "p": "You keep your rights to your photos and grant Drosia permission to anonymise, display and forward them for the purpose of the service. You confirm your report is truthful to the best of your knowledge." },
+        { "h": "Moderation and removal", "p": "We review reports before they go public and may reject or remove content that is spam, unlawful, or points at private persons. Anyone can flag content with the \"Report / dispute\" button." },
+        { "h": "No warranty", "p": "Drosia is provided \"as is\". We can't guarantee that an authority will act, or that information is complete or error-free. Accountability figures are based on delivered citizen reports and are not official findings." },
+        { "h": "Changes", "p": "We may update these terms and the service. The current version applies. [Governing law and place of jurisdiction to be specified.]" }
+      ]
+    }
   }
 }

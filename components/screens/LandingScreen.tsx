@@ -280,7 +280,14 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
       </div>
 
       <footer className="px-6 pb-6 text-center text-[11px] text-muted">
-        Drosia · drosia.eu · {dict.footer.privacy} · {dict.footer.imprint} · {dict.footer.terms}
+        <div>Drosia · drosia.eu</div>
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <Link href="/privacy" className="underline-offset-2 hover:underline">{dict.footer.privacy}</Link>
+          <span aria-hidden>·</span>
+          <Link href="/imprint" className="underline-offset-2 hover:underline">{dict.footer.imprint}</Link>
+          <span aria-hidden>·</span>
+          <Link href="/terms" className="underline-offset-2 hover:underline">{dict.footer.terms}</Link>
+        </div>
       </footer>
     </div>
   );

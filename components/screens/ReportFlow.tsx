@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Bell,
   Camera,
   Check,
   CheckCircle2,
@@ -30,6 +31,7 @@ import { compressImage } from "@/lib/compress-image";
 import { getDeviceToken } from "@/lib/device-token";
 import { readExifGps, type LatLng } from "@/lib/exif-gps";
 import { trackEvent } from "@/lib/track";
+import { canFollow, followReport, type FollowResult } from "@/lib/push/client";
 
 type Step = 1 | 2 | 3 | 4;
 type LocSource = "exif" | "gps" | "manual";
@@ -588,6 +590,7 @@ function SuccessView({
 }) {
   const { dict } = useLocale();
   const [copied, setCopied] = useState(false);
+  const [follow, setFollow] = useState<FollowResult | "idle" | "loading">("idle");
 
   // Client-only view (rendered after submit), so window is available.
   const reportUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/r/${token}`;
@@ -664,10 +667,35 @@ function SuccessView({
         </div>
       </div>
 
-      {/* Follow/push CTA intentionally absent: subscriptions are captured by
-          /api/push/subscribe, but no sender exists yet — a button that promises
-          notifications we never send is worse than no button. Re-add with the
-          VAPID sender (see handover P1). */}
+      {/* Follow via Web-Push — keyed by the anonymous device token, no email.
+          Only shown when the browser + a configured VAPID key support it. */}
+      {canFollow() && follow !== "followed" && (
+        <button
+          onClick={async () => {
+            setFollow("loading");
+            setFollow(await followReport(token));
+          }}
+          disabled={follow === "loading"}
+          className="mt-3.5 flex w-full items-center gap-3 rounded-2xl border border-line bg-surface-card p-3.5 text-left disabled:opacity-60"
+        >
+          <Bell size={22} className="flex-none text-primary-ink" aria-hidden />
+          <div className="flex-1">
+            <div className="text-[13px] font-bold">{dict.success.follow}</div>
+            <div className="text-[12px] text-muted">{dict.success.followSub}</div>
+          </div>
+          <span className="font-display text-[13px] font-extrabold text-primary-ink">
+            {follow === "loading" ? dict.common.loading : dict.success.followCta}
+          </span>
+        </button>
+      )}
+      {follow === "followed" && (
+        <div className="mt-3.5 flex items-center justify-center gap-1.5 text-[13px] font-bold text-success">
+          <Bell size={15} aria-hidden /> {dict.tracking.following}
+        </div>
+      )}
+      {(follow === "denied" || follow === "error") && (
+        <div className="mt-2 text-center text-[12px] text-muted">{dict.tracking.followDesc}</div>
+      )}
 
       <button
         onClick={onMap}

@@ -34,7 +34,7 @@
   --ink: #0b2b30;
   --ink-contrast: #ffffff; /* text that sits on bg-ink (flips with --ink) */
   --slate: #5b7378;
-  --muted: #9db1b5;
+  --muted: #5f7a7f;
   --border: #e8f0f0;
   --border-strong: #e3edee;
   --tint: #e0f3f5; /* aqua chip / info block */
@@ -57,7 +57,7 @@
   --ink: #eaf4f5;
   --ink-contrast: #04181d; /* dark text on the now-light bg-ink */
   --slate: #9fc4c9;
-  --muted: #6e8a90;
+  --muted: #7c989d;
   --border: #173b43;
   --border-strong: #173b43;
   --tint: #0b2b30;
@@ -77,7 +77,7 @@
     --ink: #eaf4f5;
     --ink-contrast: #04181d;
     --slate: #9fc4c9;
-    --muted: #6e8a90;
+    --muted: #7c989d;
     --border: #173b43;
     --border-strong: #173b43;
     --tint: #0b2b30;
@@ -102,6 +102,15 @@ body {
 ::selection {
   background: var(--primary);
   color: #fff;
+}
+
+/* Visible keyboard focus for all interactive elements. Zero-specificity
+   (:where) so components can still opt into a custom ring; only shows for
+   keyboard/AT users (:focus-visible), never on mouse click. */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* All figures are tabular by default — numbers are the emotional centre. */

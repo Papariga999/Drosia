@@ -1,6 +1,9 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { deliverReport, type DeliveryChannel } from "@/lib/providers/deliver";
+import { getDict, isLocale, DEFAULT_LOCALE } from "@/lib/i18n";
+import { SITE_URL } from "@/lib/site-url";
+import { notifyReportFollowers } from "@/lib/push/send";
 
 export interface DeliverAndLogResult {
   status: string; // report status after the attempt
@@ -72,6 +75,16 @@ export async function deliverAndLog(reportId: string): Promise<DeliverAndLogResu
         .from("reports")
         .update({ status: "notified", notified_at: new Date().toISOString() } as never)
         .eq("id", report.id);
+
+      // Notify followers that their report was forwarded (fire-and-forget; no-op
+      // until VAPID keys are set). Only on the real transition, so re-sends don't
+      // re-notify.
+      const dict = getDict(isLocale(report.locale) ? report.locale : DEFAULT_LOCALE);
+      await notifyReportFollowers(report.id, {
+        title: dict.push.forwardedTitle,
+        body: dict.push.forwardedBody,
+        url: `${SITE_URL}/r/${report.public_token}`,
+      });
     }
     return { status: "notified", delivery: "sent" };
   }

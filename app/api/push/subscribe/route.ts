@@ -23,6 +23,7 @@ const bodySchema = z.object({
     }),
   }),
   areaAuthorityId: z.string().uuid().optional(),
+  reportToken: z.string().trim().min(1).max(64).optional(),
 });
 
 function configured(): boolean {
@@ -70,5 +71,28 @@ export async function POST(req: Request): Promise<Response> {
     );
 
   if (error) return NextResponse.json({ error: "Subscribe failed." }, { status: 500 });
+
+  // Optional per-report follow: record who to Web-push when this report changes.
+  // Best-effort — the subscription is already stored, so a follow write failing
+  // here must not fail the request.
+  if (parsed.data.reportToken) {
+    try {
+      const { data: rep } = await getSupabaseAdmin()
+        .from("reports")
+        .select("id")
+        .eq("public_token", parsed.data.reportToken)
+        .maybeSingle<{ id: string }>();
+      if (rep) {
+        await getSupabaseAdmin()
+          .from("report_follows")
+          .upsert({ report_id: rep.id, device_token: deviceToken } as never, {
+            onConflict: "report_id,device_token",
+          });
+      }
+    } catch {
+      /* best-effort follow */
+    }
+  }
+
   return NextResponse.json({ ok: true });
 }

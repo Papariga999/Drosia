@@ -203,6 +203,17 @@ create table if not exists push_subscriptions (
   created_at        timestamptz not null default now()
 );
 
+-- Per-report follows → who receives a Web-push when a followed report changes.
+-- NO email. device_token ties to a browser (not an account); the push endpoint
+-- and keys live in push_subscriptions. Additive: safe to run on an existing DB.
+create table if not exists report_follows (
+  report_id    uuid not null references reports(id) on delete cascade,
+  device_token text not null,
+  created_at   timestamptz not null default now(),
+  primary key (report_id, device_token)
+);
+alter table report_follows enable row level security;
+
 -- Geocode cache (rounded lat/lng key).
 create table if not exists geocode_cache (
   key        text primary key,

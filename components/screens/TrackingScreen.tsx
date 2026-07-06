@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bell, Check, CheckCircle2, Flag, Landmark, Lock, Share2 } from "lucide-react";
+import { followReport } from "@/lib/push/client";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
@@ -366,7 +367,11 @@ export function TrackingScreen({
             <CheckCircle2 size={15} aria-hidden /> {dict.tracking.looksClean}
           </button>
           <button
-            onClick={() => setFollowing((f) => !f)}
+            onClick={async () => {
+              if (following) return;
+              const r = await followReport(report.public_token);
+              if (r === "followed") setFollowing(true);
+            }}
             aria-pressed={following}
             className={`flex flex-1 items-center justify-center gap-1.5 rounded-btn border-[1.5px] px-3 py-3 font-display text-[13px] font-extrabold ${
               following
@@ -415,7 +420,9 @@ export function TrackingScreen({
       </div>
 
       <footer className="px-5 pb-2 pt-5 text-center text-[11px] text-muted">
-        Drosia · {dict.footer.privacy} · {dict.footer.imprint} ·{" "}
+        Drosia ·{" "}
+        <Link href="/privacy" className="underline-offset-2 hover:underline">{dict.footer.privacy}</Link> ·{" "}
+        <Link href="/imprint" className="underline-offset-2 hover:underline">{dict.footer.imprint}</Link> ·{" "}
         <button onClick={() => setFlagOpen(true)} className="inline-flex items-center gap-1 underline">
           <Flag size={11} aria-hidden /> {dict.tracking.flag}
         </button>

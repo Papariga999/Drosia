@@ -301,5 +301,52 @@
     "emptyTitle": "Deine erste Meldung verändert etwas",
     "emptyBody": "Noch keine Meldungen. Leg jetzt los.",
     "emptyCta": "Melden"
+  },
+  "push": {
+    "forwardedTitle": "An die Behörde weitergeleitet",
+    "forwardedBody": "Eine von dir verfolgte Meldung wurde an die zuständige Behörde gesendet."
+  },
+  "meta": {
+    "title": "Drosia — Müll der zuständigen Behörde melden",
+    "description": "Sehen. Melden. Verfolgen, was passiert. Melde Müll und Umweltprobleme in unter einer Minute — ohne Konto. Drosia leitet jede Meldung an die zuständige Behörde weiter und verfolgt sie öffentlich."
+  },
+  "legal": {
+    "back": "Zurück zum Start",
+    "updated": "Zuletzt aktualisiert",
+    "reviewNote": "Entwurf zur Prüfung — Betreiberangaben ergänzen und den Text vor dem Start rechtlich prüfen lassen.",
+    "privacy": {
+      "title": "Datenschutz",
+      "sections": [
+        { "h": "Kurz gesagt", "p": "Drosia funktioniert ohne Konto. Wir fragen nicht nach Name oder E-Mail, verkaufen keine Daten und verfolgen dich nicht im Web. Du meldest ein Problem; wir leiten es an die zuständige Behörde weiter und zeigen den Status öffentlich." },
+        { "h": "Was wir verarbeiten", "p": "Die gesendeten Fotos, den Ort des Problems (aus dem Foto, dem GPS deines Geräts oder einer von dir gesetzten Markierung), die Kategorie und eine optionale Beschreibung. Ein zufälliges Gerätetoken in deinem Browser lässt dich deine Meldungen wiederfinden und Updates erhalten — es ist nicht mit deiner Identität verknüpft." },
+        { "h": "Fotos und Anonymisierung", "p": "Bevor ein Foto öffentlich gezeigt wird, wird es automatisch anonymisiert — Gesichter und Kfz-Kennzeichen werden unkenntlich gemacht. Originalfotos bleiben privat und sind nur für unsere Moderation zugänglich. Bitte fotografiere keine erkennbaren Personen oder privates Eigentum." },
+        { "h": "Was öffentlich wird", "p": "Das anonymisierte Foto, der ungefähre Ort, die Kategorie und der Status erscheinen auf der öffentlichen Karte und der Tracking-Seite und werden an die zuständige öffentliche Behörde weitergeleitet." },
+        { "h": "Eingesetzte Dienstleister", "p": "Hosting und Datenbank (Supabase), E-Mail-Versand an Behörden (Resend), Hosting sowie datenschutzfreundliche, cookiefreie Statistik (Vercel) und Kartenkacheln und Ortssuche (OpenStreetMap / Nominatim). Jeder verarbeitet Daten nur zum Betrieb dieses Dienstes." },
+        { "h": "Speicherdauer", "p": "Meldungen und ihr Status werden so lange gespeichert, wie sie für die öffentliche Rechenschaft nützlich sind. Original- (nicht anonymisierte) Fotos werden nur so lange gespeichert, wie es für Moderation und Missbrauchsprävention nötig ist." },
+        { "h": "Deine Rechte", "p": "Du kannst Auskunft oder Löschung einer Meldung verlangen oder Inhalte beanstanden. Nutze die Schaltfläche „Melden / beanstanden“ bei jeder öffentlichen Meldung oder kontaktiere uns. Nach der DSGVO hast du zudem das Recht, dich bei einer Aufsichtsbehörde zu beschweren." },
+        { "h": "Kontakt", "p": "[Betreibername], [Adresse] — [E-Mail]." }
+      ]
+    },
+    "imprint": {
+      "title": "Impressum",
+      "sections": [
+        { "h": "Betreiber", "p": "[Betreibername / Rechtsform], [Straße und Nummer], [PLZ und Ort], [Land]." },
+        { "h": "Vertreten durch", "p": "[Name(n) der vertretungsberechtigten Person(en)]." },
+        { "h": "Kontakt", "p": "E-Mail: [E-Mail]. [Telefon, falls vorhanden]." },
+        { "h": "USt-IdNr. / Register", "p": "[USt-IdNr. und/oder Registereintrag, falls vorhanden]." },
+        { "h": "Inhaltlich verantwortlich", "p": "[Name und Anschrift der für den Inhalt verantwortlichen Person]." }
+      ]
+    },
+    "terms": {
+      "title": "Nutzungsbedingungen",
+      "sections": [
+        { "h": "Was Drosia ist", "p": "Drosia ist ein kostenloses Werkzeug, um Müll und Umweltprobleme an die zuständige öffentliche Behörde zu melden. Meldungen sind Angaben von Nutzern, keine behördlichen Feststellungen." },
+        { "h": "Verantwortungsvolle Nutzung", "p": "Melde nur, was du fotografieren darfst. Dokumentiere das Problem, nicht Personen: keine erkennbaren Personen und kein privates Eigentum oder Privatpersonen. Meldungen, die auf Privatpersonen zielen, werden entfernt." },
+        { "h": "Deine Inhalte", "p": "Du behältst die Rechte an deinen Fotos und gibst Drosia die Erlaubnis, sie zum Zweck des Dienstes zu anonymisieren, anzuzeigen und weiterzuleiten. Du bestätigst, dass deine Meldung nach bestem Wissen wahr ist." },
+        { "h": "Moderation und Entfernung", "p": "Wir prüfen Meldungen, bevor sie öffentlich werden, und können Inhalte ablehnen oder entfernen, die Spam, rechtswidrig oder auf Privatpersonen gerichtet sind. Jede Person kann Inhalte über „Melden / beanstanden“ melden." },
+        { "h": "Keine Gewähr", "p": "Drosia wird „wie besehen“ bereitgestellt. Wir garantieren nicht, dass eine Behörde handelt oder dass Informationen vollständig oder fehlerfrei sind. Rechenschaftszahlen beruhen auf zugestellten Bürgermeldungen und sind keine amtlichen Feststellungen." },
+        { "h": "Änderungen", "p": "Wir können diese Bedingungen und den Dienst aktualisieren. Es gilt die jeweils aktuelle Fassung. [Anwendbares Recht und Gerichtsstand sind festzulegen.]" }
+      ]
+    }
   }
 }

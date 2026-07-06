@@ -44,6 +44,7 @@ describe("schema RLS / least-privilege guardrails", () => {
     "anon_devices",
     "report_votes",
     "push_subscriptions",
+    "report_follows",
     "geocode_cache",
     "rate_limits",
     "web_events",
