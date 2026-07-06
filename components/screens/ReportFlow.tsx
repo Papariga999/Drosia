@@ -30,11 +30,25 @@ import { MAX_PHOTOS, MAX_DESCRIPTION, MAX_TOTAL_UPLOAD_BYTES } from "@/lib/repor
 import { compressImage } from "@/lib/compress-image";
 import { getDeviceToken } from "@/lib/device-token";
 import { readExifGps, type LatLng } from "@/lib/exif-gps";
+import { formatDistance } from "@/lib/geo";
+import { reportAgeDays } from "@/lib/severity";
 import { trackEvent } from "@/lib/track";
 import { canFollow, followReport, type FollowResult } from "@/lib/push/client";
 
 type Step = 1 | 2 | 3 | 4;
 type LocSource = "exif" | "gps" | "manual";
+
+/** One row from /api/reports/nearby — an open public report close to the pin. */
+interface NearbySuggestion {
+  public_token: string;
+  category: ReportCategory;
+  status: string;
+  created_at: string;
+  notified_at: string | null;
+  resolved_at: string | null;
+  photo_url: string | null;
+  distance_m: number;
+}
 
 /**
  * Report flow (Screen 3) → Success (Screen 4). 4 gated steps with progress
@@ -80,6 +94,48 @@ export function ReportFlow() {
       trackEvent("geolocate");
     }
   }, [coords]);
+
+  // Pre-submit duplicate check (WO-4): once a location is set, look for open
+  // public reports within 100 m so the same pile isn't reported twice.
+  // Debounced (map taps fire rapidly), best-effort (a failure never blocks the
+  // flow) and skippable — the card is a suggestion, not a gate.
+  const [nearby, setNearby] = useState<NearbySuggestion[]>([]);
+  const [nearbyDismissed, setNearbyDismissed] = useState(false);
+  const [followingNearby, setFollowingNearby] = useState<string | null>(null);
+  const nearbyShownFired = useRef(false);
+  useEffect(() => {
+    // No sync setState here (lint: cascading renders) — stale suggestions are
+    // render-guarded by `coords &&` below and reset on flow restart.
+    if (!coords) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/reports/nearby?lat=${coords.lat}&lng=${coords.lng}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as { reports?: NearbySuggestion[] };
+        const list = data.reports ?? [];
+        setNearby(list);
+        if (list.length && !nearbyShownFired.current) {
+          nearbyShownFired.current = true;
+          trackEvent("nearby_dupe_shown");
+        }
+      } catch {
+        /* suggestion is best-effort */
+      }
+    }, 600);
+    return () => clearTimeout(t);
+  }, [coords]);
+
+  // "It's the same" → follow the existing report (Web-Push where supported)
+  // and hand over to its tracking page instead of creating a duplicate.
+  async function followNearby(r: NearbySuggestion) {
+    setFollowingNearby(r.public_token);
+    trackEvent("nearby_dupe_follow", { reportToken: r.public_token });
+    try {
+      if (canFollow()) await followReport(r.public_token);
+    } finally {
+      router.push(`/r/${r.public_token}`);
+    }
+  }
 
   async function addFiles(picked: FileList | null) {
     const list = Array.from(picked ?? []).filter((f) => f.type.startsWith("image/"));
@@ -204,6 +260,9 @@ export function ReportFlow() {
           setConsent(false);
           setDesc("");
           setToken(null);
+          setNearby([]);
+          setNearbyDismissed(false);
+          setFollowingNearby(null);
         }}
         onMap={() => router.push("/map")}
       />
@@ -355,6 +414,50 @@ export function ReportFlow() {
             >
               <LocateFixed size={17} aria-hidden /> {locating ? dict.flow.locating : dict.flow.useLocation}
             </button>
+
+            {/* Possible duplicates (WO-4) — skippable suggestion, never a gate. */}
+            {coords && nearby.length > 0 && !nearbyDismissed && (
+              <div className="mt-3.5 rounded-2xl border-[1.5px] border-accent bg-surface-card p-3.5">
+                <div className="font-display text-[14px] font-extrabold">{dict.flow.nearbyTitle}</div>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-slate">{dict.flow.nearbySub}</p>
+                <div className="mt-2.5 flex flex-col gap-2">
+                  {nearby.map((r) => (
+                    <div key={r.public_token} className="flex items-center gap-2.5 rounded-xl border border-line p-2">
+                      {r.photo_url ? (
+                        <div className="h-12 w-12 flex-none overflow-hidden rounded-[10px] border border-line">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={r.photo_url} alt="" className="h-full w-full object-cover" />
+                        </div>
+                      ) : (
+                        <PhotoPlaceholder className="h-12 w-12 flex-none rounded-[10px]" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 text-[13px] font-bold">
+                          <CategoryIcon category={r.category} size={15} className="flex-none text-primary-ink" />
+                          <span className="truncate">{categoryLabel(r.category, locale)}</span>
+                        </div>
+                        <div className="tnum text-[11px] text-muted">
+                          {reportAgeDays(r)} {dict.severity.days} · {formatDistance(r.distance_m / 1000)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => followNearby(r)}
+                        disabled={followingNearby !== null}
+                        className="flex-none rounded-[10px] border border-primary bg-tint px-2.5 py-2 text-[12px] font-bold text-primary-ink disabled:opacity-60"
+                      >
+                        {followingNearby === r.public_token ? dict.common.loading : dict.flow.nearbySame}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setNearbyDismissed(true)}
+                  className="mt-2.5 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-[13px] font-bold text-slate"
+                >
+                  {dict.flow.nearbyNew}
+                </button>
+              </div>
+            )}
 
             <div className="mt-3 text-center text-[12px] font-bold text-muted">{dict.flow.tapHint}</div>
           </div>

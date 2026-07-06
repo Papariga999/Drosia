@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  */
 const LOCALES = ["el", "en", "de"];
 // Allowlist of analytics events (anything else is coerced to 'pageview').
-const EVENTS = ["pageview", "report_start", "photo_added", "geolocate", "submit_success", "submit_fail", "share_click", "map_open", "session_duration", "nearby_next"];
+const EVENTS = ["pageview", "report_start", "photo_added", "geolocate", "submit_success", "submit_fail", "share_click", "map_open", "session_duration", "nearby_next", "nearby_dupe_shown", "nearby_dupe_follow"];
 const SHARE_CHANNELS = ["whatsapp", "facebook", "x", "copy", "native", "other"];
 const MAX_SESSION_DURATION_MS = 4 * 60 * 60 * 1000;
 const BOT_RE = /bot|crawl|spider|slurp|facebookexternalhit|bingpreview|headless|lighthouse|pingdom|gtmetrix|uptime|monitor|preview|curl|wget/i;
