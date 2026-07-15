@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/admin/session";
+import { verifyAdminMutation, verifySession } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { AdminTaskRow } from "@/lib/admin/types";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -17,8 +18,8 @@ function isMissingTable(error: unknown): boolean {
   return /admin_tasks/.test(blob) && /(does not exist|schema cache|42P01|PGRST205|PGRST20)/i.test(blob);
 }
 
-async function guard(): Promise<boolean> {
-  return verifySession();
+async function guard(req?: Request): Promise<boolean> {
+  return req ? verifyAdminMutation(req) : verifySession();
 }
 
 /** GET /api/admin/tasks — full board (service role). */
@@ -39,16 +40,28 @@ export async function GET(): Promise<Response> {
 
 /** POST /api/admin/tasks — add a to-do { title, details?, priority?, category? }. */
 export async function POST(req: Request): Promise<Response> {
-  if (!(await guard())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await guard(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: { title?: string; details?: string | null; priority?: string; category?: string };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
-  const title = (body.title ?? "").trim();
+  if (typeof body.title !== "string") {
+    return NextResponse.json({ error: "Title is required." }, { status: 400 });
+  }
+  if (body.details !== undefined && body.details !== null && typeof body.details !== "string") {
+    return NextResponse.json({ error: "Invalid details." }, { status: 400 });
+  }
+  if (body.priority !== undefined && typeof body.priority !== "string") {
+    return NextResponse.json({ error: "Invalid priority." }, { status: 400 });
+  }
+  if (body.category !== undefined && typeof body.category !== "string") {
+    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
+  }
+  const title = body.title.trim();
   if (!title) return NextResponse.json({ error: "Title is required." }, { status: 400 });
   if (title.length > 200) return NextResponse.json({ error: "Title is too long (max 200)." }, { status: 400 });
 
@@ -73,7 +86,7 @@ export async function POST(req: Request): Promise<Response> {
 
 /** PATCH /api/admin/tasks — edit { id, title?, details?, status?, priority?, category? }. */
 export async function PATCH(req: Request): Promise<Response> {
-  if (!(await guard())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await guard(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   let body: {
     id?: string;
@@ -84,13 +97,29 @@ export async function PATCH(req: Request): Promise<Response> {
     category?: string;
   };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
   const id = body.id ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+
+  if (body.title !== undefined && typeof body.title !== "string") {
+    return NextResponse.json({ error: "Invalid title." }, { status: 400 });
+  }
+  if (body.details !== undefined && body.details !== null && typeof body.details !== "string") {
+    return NextResponse.json({ error: "Invalid details." }, { status: 400 });
+  }
+  if (body.status !== undefined && typeof body.status !== "string") {
+    return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+  }
+  if (body.priority !== undefined && typeof body.priority !== "string") {
+    return NextResponse.json({ error: "Invalid priority." }, { status: 400 });
+  }
+  if (body.category !== undefined && typeof body.category !== "string") {
+    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
+  }
 
   const patch: Record<string, unknown> = {};
   if (body.title !== undefined) {
@@ -125,7 +154,7 @@ export async function PATCH(req: Request): Promise<Response> {
 
 /** DELETE /api/admin/tasks?id=… — remove a to-do. */
 export async function DELETE(req: Request): Promise<Response> {
-  if (!(await guard())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await guard(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = new URL(req.url).searchParams.get("id") ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });

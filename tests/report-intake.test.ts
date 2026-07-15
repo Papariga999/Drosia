@@ -12,7 +12,7 @@ const base = {
   description: "Pile of waste by the road",
   locale: "el",
   consent: "true",
-  authorToken: "dev-abc",
+  authorToken: "8baadf8e-2a51-4f4d-bbb1-8938ac4df995",
   website: "",
 };
 
@@ -79,5 +79,10 @@ describe("photo validation", () => {
 
   it("rejects non-image types", () => {
     expect(validatePhotos([{ size: 1000, type: "application/pdf" }])).toMatchObject({ ok: false });
+  });
+
+  it("rejects empty files and missing MIME declarations", () => {
+    expect(validatePhotos([{ size: 0, type: "image/jpeg" }])).toMatchObject({ ok: false });
+    expect(validatePhotos([{ size: 1000, type: "" }])).toMatchObject({ ok: false });
   });
 });

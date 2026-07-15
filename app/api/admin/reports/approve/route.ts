@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/admin/session";
+import { verifyAdminMutation } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
 import { deliverAndLog } from "@/lib/admin/deliver-report";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -22,18 +23,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * Every delivery attempt is written to delivery_logs — never a silent failure.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!(await verifySession())) {
+  if (!(await verifyAdminMutation(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: { id?: string; notify?: boolean };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
   const id = body.id ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  if (body.notify !== undefined && typeof body.notify !== "boolean") {
+    return NextResponse.json({ error: "Invalid notify value." }, { status: 400 });
+  }
   const notify = body.notify !== false; // default: send the authority email
 
   const admin = getSupabaseAdmin();
@@ -45,18 +49,29 @@ export async function POST(req: Request): Promise<Response> {
     .maybeSingle<{ id: string; status: string }>();
 
   if (loadError || !report) return NextResponse.json({ error: "Report not found." }, { status: 404 });
-  if (report.status === "rejected") {
-    return NextResponse.json({ error: "Report was rejected." }, { status: 409 });
+  if (report.status !== "submitted" && report.status !== "in_review") {
+    return NextResponse.json(
+      { error: `Cannot approve a report in status '${report.status}'.` },
+      { status: 409 },
+    );
   }
 
   // Ensure anonymization is done before anything becomes public.
-  await anonymizeReportPhotos(report.id);
-  const { count: pending } = await admin
+  try {
+    await anonymizeReportPhotos(report.id);
+  } catch (error) {
+    console.error("[/api/admin/reports/approve] anonymization failed:", error);
+    return NextResponse.json({ error: "Anonymization failed; report remains private." }, { status: 502 });
+  }
+  const { data: photos, error: photoError } = await admin
     .from("report_photos")
-    .select("id", { count: "exact", head: true })
+    .select("blur_status, public_path")
     .eq("report_id", report.id)
-    .neq("blur_status", "done");
-  if ((pending ?? 0) > 0) {
+    .returns<{ blur_status: string; public_path: string | null }[]>();
+  if (photoError || !photos?.length) {
+    return NextResponse.json({ error: "At least one report photo is required." }, { status: 409 });
+  }
+  if (photos.some((photo) => photo.blur_status !== "done" || !photo.public_path)) {
     return NextResponse.json({ error: "Awaiting anonymization (blur not done)." }, { status: 409 });
   }
 
@@ -82,7 +97,13 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ status: "in_review", delivery: "awaiting_channel" });
   }
   if (result.delivery === "sent") {
-    return NextResponse.json({ status: "notified", delivery: "sent" });
+    return NextResponse.json({ status: result.status, delivery: "sent" });
+  }
+  if (result.delivery === "invalid_state") {
+    return NextResponse.json({ status: result.status, delivery: result.delivery, error: result.error }, { status: 409 });
+  }
+  if (result.delivery === "log_failed" || result.delivery === "sent_status_failed") {
+    return NextResponse.json({ status: result.status, delivery: result.delivery, error: result.error }, { status: 500 });
   }
   return NextResponse.json({ status: "in_review", delivery: "failed", error: result.error });
 }

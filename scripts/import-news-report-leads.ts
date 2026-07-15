@@ -64,7 +64,7 @@ const GREEK_AUTHORITY_BY_EN = new Map<string, string>([
 ]);
 
 function tokenFor(id: string): string {
-  return createHash("sha256").update(id).digest("hex").slice(0, 16);
+  return createHash("sha256").update(id).digest("hex").slice(0, 32);
 }
 
 function loadLeads(): NewsLead[] {

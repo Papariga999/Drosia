@@ -21,6 +21,7 @@ describe("email delivery (dev mode, no RESEND_API_KEY)", () => {
     const r = await deliverReport({
       channel: "email",
       reportId: "00000000-0000-0000-0000-000000000000",
+      deliveryLogId: "10000000-0000-0000-0000-000000000000",
       reportToken: "demo",
       category: "litter",
       recipient: null,
@@ -34,6 +35,7 @@ describe("email delivery (dev mode, no RESEND_API_KEY)", () => {
     const r = await deliverReport({
       channel: "email",
       reportId: "00000000-0000-0000-0000-000000000000",
+      deliveryLogId: "10000000-0000-0000-0000-000000000000",
       reportToken: "demo",
       category: "litter",
       recipient: "perivallon@example.gr",

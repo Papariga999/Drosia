@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/admin/session";
+import { verifyAdminMutation } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -17,13 +18,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * lossless; for permanent erasure use delete, for DSA takedown use reject.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!(await verifySession())) {
+  if (!(await verifyAdminMutation(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: { id?: string; hidden?: boolean };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
@@ -34,11 +35,14 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "Missing 'hidden' boolean." }, { status: 400 });
   }
 
-  const { error } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from("reports")
     .update({ admin_hidden: body.hidden } as never)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id")
+    .maybeSingle<{ id: string }>();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: "Report not found." }, { status: 404 });
   return NextResponse.json({ ok: true, admin_hidden: body.hidden });
 }

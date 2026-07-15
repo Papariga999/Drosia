@@ -39,7 +39,10 @@ export const reportFieldsSchema = z.object({
     .transform((v) => v === true || v === "true" || v === "on" || v === "1")
     .refine((v) => v === true, "Upload consent is required"),
   // Anonymous device token (NOT PII). Optional — only for "my reports".
-  authorToken: z.string().trim().max(128).optional().default(""),
+  authorToken: z
+    .union([z.literal(""), z.string().trim().regex(/^[A-Za-z0-9_-]{16,128}$/)])
+    .optional()
+    .default(""),
   // Honeypot: real users never fill this. Must be empty.
   website: z.string().max(0).optional().default(""),
 });
@@ -57,8 +60,11 @@ export function validatePhotos(photos: PhotoLike[]): { ok: true } | { ok: false;
   let total = 0;
   for (const p of photos) {
     total += p.size;
+    if (!Number.isSafeInteger(p.size) || p.size <= 0) {
+      return { ok: false, error: "Photo is empty or has an invalid size" };
+    }
     if (p.size > MAX_PHOTO_BYTES) return { ok: false, error: "Photo exceeds size limit (4 MB)" };
-    if (p.type && !ACCEPTED_IMAGE_TYPES.includes(p.type)) {
+    if (!ACCEPTED_IMAGE_TYPES.includes(p.type.toLowerCase())) {
       return { ok: false, error: `Unsupported image type: ${p.type}` };
     }
   }

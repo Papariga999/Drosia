@@ -1,7 +1,7 @@
 import "server-only";
 import type { Locale } from "@/lib/i18n";
 import { LOCALES } from "@/lib/i18n";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabasePublic, publicSupabaseConfigured } from "@/lib/supabase/public";
 import { getScorecard } from "@/lib/reports";
 import type { PublicReport } from "@/lib/mock";
 
@@ -21,8 +21,7 @@ export interface AuthorityPageData {
 }
 
 function configured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  return !!url && !url.includes("YOUR_PROJECT") && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  return publicSupabaseConfigured();
 }
 
 function toMap(name: Record<string, string> | null): Record<Locale, string> {
@@ -34,9 +33,9 @@ function toMap(name: Record<string, string> | null): Record<Locale, string> {
 export async function getAuthorityPage(id: string): Promise<AuthorityPageData | null> {
   if (!configured()) return null;
   try {
-    const admin = getSupabaseAdmin();
-    const { data: authority } = await admin
-      .from("authorities")
+    const client = getSupabasePublic();
+    const { data: authority } = await client
+      .from("v_public_authorities")
       .select("id, name_i18n, level")
       .eq("id", id)
       .maybeSingle<{ id: string; name_i18n: Record<string, string> | null; level: string }>();
@@ -46,15 +45,14 @@ export async function getAuthorityPage(id: string): Promise<AuthorityPageData | 
     const idx = scorecard.findIndex((s) => s.authority_id === id);
     const entry = idx >= 0 ? scorecard[idx] : null;
 
-    const { data: disp } = await admin
-      .from("authority_responses")
-      .select("id")
+    const { data: disp } = await client
+      .from("v_public_authority_disputes")
+      .select("authority_id")
       .eq("authority_id", id)
-      .in("response_type", ["disputed", "not_responsible"])
       .limit(1);
 
     // Query the public view filtered to this authority.
-    const { data: rows } = await admin
+    const { data: rows } = await client
       .from("v_public_reports")
       .select("public_token, category, lat, lng, status, vote_count, confirm_count, created_at, notified_at, resolved_at, authority_name")
       .eq("authority_id", id)

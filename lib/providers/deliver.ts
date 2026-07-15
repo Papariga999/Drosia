@@ -16,6 +16,7 @@ export type DeliveryChannel = "email" | "open311" | "none";
 
 export interface DeliverInput {
   reportId: string;
+  deliveryLogId: string;
   reportToken: string;
   category: string;
   recipient: string | null; // authority email (email channel) or endpoint id
@@ -110,7 +111,19 @@ class EmailDeliverer implements ReportDeliverer {
       const resend = new Resend(apiKey);
       // Bounded wait: the SDK has no timeout option; a hung send must become a
       // logged FAILED delivery (operator can resend), not a stalled function.
-      const send = resend.emails.send({ from, to: input.recipient, subject, text });
+      const send = resend.emails.send(
+        {
+          from,
+          to: input.recipient,
+          subject,
+          text,
+          tags: [
+            { name: "drosia_kind", value: "authority_report" },
+            { name: "delivery_log_id", value: input.deliveryLogId },
+          ],
+        },
+        { idempotencyKey: `authority-report/${input.deliveryLogId}` },
+      );
       void send.catch(() => {}); // no unhandled rejection if the timeout wins the race
       const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Resend send timed out after 15s")), 15_000),

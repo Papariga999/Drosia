@@ -68,6 +68,10 @@ interface AuthorityRow {
   id: string;
   name_i18n: Record<string, string> | null;
   email_official: string | null;
+  delivery_channel: string;
+  is_active: boolean;
+  is_auto_created: boolean;
+  is_test: boolean;
 }
 
 async function main(): Promise<void> {
@@ -106,7 +110,7 @@ async function main(): Promise<void> {
   // municipalities once, then diff against the source list.
   const { data: existingData, error: exErr } = await db
     .from("authorities")
-    .select("id, name_i18n, email_official")
+    .select("id, name_i18n, email_official, delivery_channel, is_active, is_auto_created, is_test")
     .eq("country_code", "GR")
     .eq("level", "municipality");
   if (exErr) {
@@ -129,8 +133,17 @@ async function main(): Promise<void> {
     if (!email) missingEmail++;
     const existing = byName.get(m.name_el);
     if (existing) {
-      if ((existing.email_official ?? null) !== email) toUpdate.push({ id: existing.id, email });
-      else unchanged++;
+      if (
+        (existing.email_official ?? null) !== email ||
+        existing.delivery_channel !== "email" ||
+        !existing.is_active ||
+        existing.is_auto_created ||
+        existing.is_test
+      ) {
+        toUpdate.push({ id: existing.id, email });
+      } else {
+        unchanged++;
+      }
     } else {
       toInsert.push({
         country_code: "GR",
@@ -161,7 +174,13 @@ async function main(): Promise<void> {
   for (const u of toUpdate) {
     const { error } = await db
       .from("authorities")
-      .update({ email_official: u.email } as never)
+      .update({
+        email_official: u.email,
+        delivery_channel: "email",
+        is_active: true,
+        is_auto_created: false,
+        is_test: false,
+      } as never)
       .eq("id", u.id);
     if (error) {
       console.error(`Email update failed for ${u.id}: ${error.message}`);

@@ -79,9 +79,9 @@ async function main(): Promise<void> {
     );
   }
 
-  // Two REAL Dodecanese authorities (NOT is_test) with rough coverage polygons so
-  // authority routing (ST_Contains) assigns them. Replace the rough boxes with
-  // real municipal polygons before launch. Idempotent via email as natural key.
+  // Two development-only authority fixtures with rough coverage polygons.
+  // They stay is_test=true and therefore cannot receive real report routing or
+  // enter public aggregates. Real authorities come from seed:authorities.
   const AUTHORITIES: { nameI18n: Record<string, string>; email: string; wkt: string }[] = [
     {
       nameI18n: { el: "Δήμος Ρόδου", en: "Municipality of Rhodes", de: "Gemeinde Rhodos" },
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
           delivery_channel: "email",
           email_official: a.email,
           is_active: true,
-          is_test: false,
+          is_test: true,
         })
         .select("id")
         .single();
@@ -122,6 +122,15 @@ async function main(): Promise<void> {
         continue;
       }
       id = (inserted as { id: string }).id;
+    } else {
+      const { error: fixtureError } = await db
+        .from("authorities")
+        .update({ is_test: true, is_active: true } as never)
+        .eq("id", id);
+      if (fixtureError) {
+        console.warn(`Could not mark authority fixture ${a.email} as test: ${fixtureError.message}`);
+        continue;
+      }
     }
 
     const { error: geomErr } = await db.rpc("set_authority_geom", { p_id: id, p_wkt: a.wkt });
@@ -129,7 +138,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    "Seed (dev) complete: Greece active (placeholder boundary) + 2 real authorities with coverage polygons.",
+    "Seed (dev) complete: Greece active (placeholder boundary) + 2 test authorities with coverage polygons.",
   );
 }
 

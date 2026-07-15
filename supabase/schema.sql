@@ -43,6 +43,9 @@ do $$ begin
   end if;
 end $$;
 
+-- Additive enum evolution for existing projects.
+alter type delivery_status add value if not exists 'delayed';
+
 -- ── Tables ──────────────────────────────────────────────────────────────────
 
 -- Countries: geofence boundary + active flag. New country = new row, no code change.
@@ -77,8 +80,8 @@ create table if not exists authorities (
 -- Reports.
 create table if not exists reports (
   id                   uuid primary key default gen_random_uuid(),
-  public_token         text not null unique default encode(gen_random_bytes(8), 'hex'),
-  country_code         text references countries(code),
+  public_token         text not null unique default encode(gen_random_bytes(16), 'hex'),
+  country_code         text not null references countries(code),
   authority_id         uuid references authorities(id),
   category             report_category not null,
   description          text check (description is null or char_length(description) <= 500),
@@ -116,6 +119,63 @@ alter table reports add column if not exists admin_hidden boolean not null defau
 -- Moderation audit: why a report was rejected ('private_person' | 'spam_invalid'
 -- | 'out_of_scope' | 'dsa_takedown'; validated in the route). Additive + idempotent.
 alter table reports add column if not exists reject_reason text;
+alter table reports alter column public_token set default encode(gen_random_bytes(16), 'hex');
+
+-- Upgrade guards for databases created from an older schema. NOT VALID keeps
+-- the migration deployable when legacy rows need cleanup, while still enforcing
+-- the invariant for every new or changed row. A fresh database gets both the
+-- column-level NOT NULL above and these named constraints.
+create unique index if not exists idx_authorities_id_country
+  on authorities (id, country_code);
+
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'reports_country_required'
+  ) then
+    alter table reports
+      add constraint reports_country_required
+      check (country_code is not null) not valid;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'reports_authority_country_fk'
+  ) then
+    alter table reports
+      add constraint reports_authority_country_fk
+      foreign key (authority_id, country_code)
+      references authorities (id, country_code)
+      not valid;
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint where conname = 'reports_reject_reason_valid'
+  ) then
+    alter table reports
+      add constraint reports_reject_reason_valid
+      check (
+        reject_reason is null
+        or reject_reason in ('private_person','spam_invalid','out_of_scope','dsa_takedown')
+      ) not valid;
+  end if;
+end $$;
+
+-- Finish validation automatically on clean databases while keeping upgrades
+-- deployable when an operator still needs to quarantine legacy rows first.
+do $$ begin
+  if not exists (select 1 from reports where country_code is null) then
+    alter table reports validate constraint reports_country_required;
+  end if;
+
+  if not exists (
+    select 1
+    from reports r
+    join authorities a on a.id = r.authority_id
+    where r.authority_id is not null
+      and r.country_code is distinct from a.country_code
+  ) then
+    alter table reports validate constraint reports_authority_country_fk;
+  end if;
+end $$;
 
 -- Photos: original (private) + anonymized public variant.
 create table if not exists report_photos (
@@ -136,8 +196,26 @@ create table if not exists delivery_logs (
   provider_message_id text,
   status              delivery_status not null default 'queued',
   error               text,
+  provider_status_at  timestamptz,
   created_at          timestamptz not null default now()
 );
+alter table delivery_logs add column if not exists provider_status_at timestamptz;
+
+-- At-least-once provider webhooks are deduplicated here. provider_event_id is
+-- the signed Svix id; delivery_log_id gives each event an auditable target.
+create table if not exists delivery_webhook_events (
+  provider            text not null,
+  provider_event_id   text not null,
+  delivery_log_id     uuid not null references delivery_logs(id) on delete cascade,
+  provider_message_id text not null,
+  event_type          text not null,
+  event_at            timestamptz not null,
+  received_at         timestamptz not null default now(),
+  primary key (provider, provider_event_id)
+);
+create index if not exists idx_delivery_webhook_events_log
+  on delivery_webhook_events (delivery_log_id, event_at desc);
+alter table delivery_webhook_events enable row level security;
 
 -- Authority responses (right to respond / dispute → feeds fairness).
 create table if not exists authority_responses (
@@ -233,6 +311,8 @@ create index if not exists idx_reports_public         on reports (status) where 
 create index if not exists idx_report_photos_report   on report_photos (report_id);
 create index if not exists idx_delivery_logs_report   on delivery_logs (report_id);
 create index if not exists idx_delivery_logs_status   on delivery_logs (status);
+create index if not exists idx_delivery_logs_provider_message
+  on delivery_logs (provider_message_id) where provider_message_id is not null;
 create index if not exists idx_content_flags_status   on content_flags (status);
 
 -- ── Triggers: updated_at + denormalized vote/confirm counts ─────────────────
@@ -268,6 +348,154 @@ drop trigger if exists trg_votes_count on report_votes;
 create trigger trg_votes_count after insert or delete on report_votes
   for each row execute function refresh_report_vote_counts();
 
+-- The lifecycle is a database invariant, not merely an API convention. This
+-- blocks accidental re-publication of terminal reports and keeps the ranking
+-- denominator honest by requiring notification before resolution.
+create or replace function enforce_report_state_machine() returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status <> 'submitted' then
+      raise exception 'INVALID_REPORT_INITIAL_STATUS' using errcode = 'P0001';
+    end if;
+  elsif new.status is distinct from old.status then
+    if not (
+      (old.status = 'submitted' and new.status in ('in_review','rejected'))
+      or (old.status = 'in_review' and new.status in ('notified','rejected'))
+      or (old.status = 'notified' and new.status in ('resolved','rejected'))
+    ) then
+      raise exception 'INVALID_REPORT_STATUS_TRANSITION: % -> %', old.status, new.status
+        using errcode = 'P0001';
+    end if;
+  elsif tg_op = 'UPDATE'
+    and new.notified_at is not distinct from old.notified_at
+    and new.resolved_at is not distinct from old.resolved_at then
+    -- Do not block unrelated maintenance on a legacy row solely because the row
+    -- predates these timestamp invariants.
+    return new;
+  end if;
+
+  if new.status in ('notified','resolved') and new.notified_at is null then
+    raise exception 'NOTIFIED_AT_REQUIRED' using errcode = 'P0001';
+  end if;
+
+  if new.status = 'resolved' and new.resolved_at is null then
+    raise exception 'RESOLVED_AT_REQUIRED' using errcode = 'P0001';
+  end if;
+
+  if new.status <> 'resolved' and new.resolved_at is not null then
+    raise exception 'RESOLVED_AT_REQUIRES_RESOLVED_STATUS' using errcode = 'P0001';
+  end if;
+
+  if new.status = 'submitted' and new.notified_at is not null then
+    raise exception 'SUBMITTED_REPORT_CANNOT_BE_NOTIFIED' using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql set search_path = public, pg_temp;
+
+drop trigger if exists trg_reports_state_machine on reports;
+create trigger trg_reports_state_machine before insert or update on reports
+  for each row execute function enforce_report_state_machine();
+
+-- PostgreSQL grants EXECUTE on new functions to PUBLIC by default. Trigger
+-- functions are not public RPCs, so remove that ambient privilege explicitly.
+revoke all on function set_updated_at() from public, anon, authenticated;
+revoke all on function refresh_report_vote_counts() from public, anon, authenticated;
+revoke all on function enforce_report_state_machine() from public, anon, authenticated;
+
+-- Apply a signed delivery-provider event exactly once and only if it is newer
+-- than the status already recorded. The optional log id comes from a Resend tag
+-- and closes the race where the webhook arrives before provider_message_id is
+-- persisted after send(). Events for unrelated Resend emails are not matched.
+create or replace function apply_delivery_webhook(
+  p_provider text,
+  p_event_id text,
+  p_delivery_log_id uuid,
+  p_provider_message_id text,
+  p_event_type text,
+  p_status text,
+  p_error text,
+  p_event_at timestamptz
+)
+returns text
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_log_id uuid;
+  v_inserted integer;
+  v_updated integer;
+begin
+  if p_provider is null or p_provider <> 'resend'
+     or p_event_id is null or char_length(p_event_id) not between 1 and 200
+     or p_provider_message_id is null or char_length(p_provider_message_id) not between 1 and 200
+     or p_event_type is null or char_length(p_event_type) not between 1 and 100
+     or p_event_at is null
+     or p_status is null
+     or p_status not in ('sent','delivered','delayed','bounced','failed','complained') then
+    raise exception 'INVALID_DELIVERY_WEBHOOK';
+  end if;
+
+  select dl.id into v_log_id
+  from delivery_logs dl
+  where (
+      p_delivery_log_id is not null
+      and dl.id = p_delivery_log_id
+      and (dl.provider_message_id is null or dl.provider_message_id = p_provider_message_id)
+    )
+    or dl.provider_message_id = p_provider_message_id
+  order by case when dl.id = p_delivery_log_id then 0 else 1 end
+  limit 1
+  for update;
+
+  if v_log_id is null then
+    return 'not_found';
+  end if;
+
+  insert into delivery_webhook_events (
+    provider, provider_event_id, delivery_log_id, provider_message_id,
+    event_type, event_at
+  ) values (
+    p_provider, p_event_id, v_log_id, p_provider_message_id,
+    p_event_type, p_event_at
+  )
+  on conflict (provider, provider_event_id) do nothing;
+  get diagnostics v_inserted = row_count;
+  if v_inserted = 0 then
+    return 'duplicate';
+  end if;
+
+  update delivery_logs
+  set provider_message_id = coalesce(provider_message_id, p_provider_message_id),
+      status = p_status::delivery_status,
+      error = case
+        when p_status in ('bounced','failed','complained') then left(coalesce(p_error, p_event_type), 2000)
+        else null
+      end,
+      provider_status_at = p_event_at
+  where id = v_log_id
+    and (provider_status_at is null or provider_status_at < p_event_at);
+  get diagnostics v_updated = row_count;
+  if v_updated = 0 then
+    return 'stale';
+  end if;
+
+  -- Email API acceptance is only "sent". The accountability denominator may
+  -- advance to notified only after the provider confirms actual delivery.
+  if p_status = 'delivered' then
+    update reports r
+    set status = 'notified',
+        notified_at = coalesce(r.notified_at, p_event_at)
+    where r.id = (select dl.report_id from delivery_logs dl where dl.id = v_log_id)
+      and r.status = 'in_review';
+  end if;
+  return 'applied';
+end;
+$$;
+revoke all on function apply_delivery_webhook(text, text, uuid, text, text, text, text, timestamptz)
+  from public, anon, authenticated;
+
 -- ── Row Level Security ──────────────────────────────────────────────────────
 -- Default-deny: enable RLS on every table, grant NO anon policies on base tables.
 -- All writes happen server-side via the service role (rate-limited routes).
@@ -277,88 +505,147 @@ alter table authorities        enable row level security;
 alter table reports            enable row level security;
 alter table report_photos      enable row level security;
 alter table delivery_logs      enable row level security;
+alter table delivery_webhook_events enable row level security;
 alter table authority_responses enable row level security;
 alter table content_flags      enable row level security;
 alter table support_leads      enable row level security;
 alter table anon_devices       enable row level security;
 alter table report_votes       enable row level security;
 alter table push_subscriptions enable row level security;
+alter table report_follows     enable row level security;
 alter table geocode_cache      enable row level security;
 -- (No permissive policies = anon/authenticated cannot read/write base tables.
 --  The service-role key bypasses RLS and is used only in server code.)
 
 -- ── Public read VIEWS (safe columns only) ───────────────────────────────────
 -- Published reports, without author_token / is_test.
-create or replace view v_public_reports as
+create or replace view v_public_reports with (security_barrier = true) as
   select r.id, r.public_token, r.country_code, r.authority_id, r.category, r.description,
          st_y(r.geom::geometry) as lat, st_x(r.geom::geometry) as lng,
          r.status, r.vote_count, r.confirm_count,
          r.created_at, r.notified_at, r.resolved_at, r.last_confirmed_at,
          a.name_i18n as authority_name, a.level as authority_level
   from reports r
-  left join authorities a on a.id = r.authority_id
+  left join authorities a
+    on a.id = r.authority_id and a.is_active = true and a.is_test = false
   where r.status in ('in_review','notified','resolved')
     and r.is_test = false
     and r.admin_hidden = false
+    and exists (
+      select 1 from countries c
+      where c.code = r.country_code and c.is_active = true
+    )
     and exists (
       select 1
       from report_photos ph
       where ph.report_id = r.id
         and ph.blur_status = 'done'
         and ph.public_path is not null
+    )
+    and not exists (
+      select 1
+      from report_photos ph
+      where ph.report_id = r.id
+        and (ph.blur_status <> 'done' or ph.public_path is null)
     );
 
 -- Anonymized photos only (never original_path), for published reports.
-create or replace view v_public_report_photos as
+create or replace view v_public_report_photos with (security_barrier = true) as
   select ph.report_id, ph.public_path
   from report_photos ph
   join reports r on r.id = ph.report_id
   where ph.blur_status = 'done' and ph.public_path is not null
     and r.status in ('in_review','notified','resolved') and r.is_test = false
-    and r.admin_hidden = false;
+    and r.admin_hidden = false
+    and exists (
+      select 1 from countries c
+      where c.code = r.country_code and c.is_active = true
+    )
+    and not exists (
+      select 1
+      from report_photos pending
+      where pending.report_id = r.id
+        and (pending.blur_status <> 'done' or pending.public_path is null)
+    );
 
--- Pending pins: reports submitted but not yet fully published (awaiting
--- moderation and/or photo anonymization). PRODUCT DECISION 2026-07-02: a fresh
--- report appears on the public map IMMEDIATELY as a clearly-marked pending pin,
--- and its /r/<token> page shows a status-only view — otherwise a shared link
--- 404s until approval, which reads as "report lost". Exposes the MINIMUM:
--- token, category, position, date. No photo, no description, no author_token —
--- pre-moderation content stays behind the anonymization/moderation gate.
-create or replace view v_pending_report_pins as
+-- Submitted reports are private by contract. The compatibility view stays
+-- empty and ungranted so re-running this schema closes the legacy exposure.
+create or replace view v_pending_report_pins with (security_barrier = true) as
   select r.public_token, r.category,
          st_y(r.geom::geometry) as lat, st_x(r.geom::geometry) as lng,
          r.created_at
   from reports r
-  where r.is_test = false
-    and r.admin_hidden = false
-    and (
-      r.status = 'submitted'
-      or (r.status = 'in_review' and not exists (
-        select 1 from report_photos ph
-        where ph.report_id = r.id
-          and ph.blur_status = 'done'
-          and ph.public_path is not null
-      ))
-    );
+  where false;
 
 -- Authority accountability scorecard — FAIRNESS ENFORCED:
 --   • only delivered ('notified'+'resolved') count, • >= 10, • no test, • no excluded.
-create or replace view v_authority_scorecard as
+create or replace view v_authority_scorecard with (security_barrier = true) as
   select a.id as authority_id, a.country_code, a.name_i18n, a.level,
-         count(*) filter (where r.status in ('notified','resolved')) as notified_count,
-         count(*) filter (where r.status = 'resolved')               as resolved_count,
-         round(100.0 * count(*) filter (where r.status = 'resolved')
-               / nullif(count(*) filter (where r.status in ('notified','resolved')), 0), 1) as resolution_rate_pct
+         count(*) filter (
+           where r.notified_at is not null and r.status in ('notified','resolved')
+         ) as notified_count,
+         count(*) filter (
+           where r.notified_at is not null and r.status = 'resolved'
+         ) as resolved_count,
+         round(100.0 * count(*) filter (
+                 where r.notified_at is not null and r.status = 'resolved'
+               )
+               / nullif(count(*) filter (
+                   where r.notified_at is not null and r.status in ('notified','resolved')
+                 ), 0), 1) as resolution_rate_pct
   from authorities a
+  join countries c on c.code = a.country_code and c.is_active = true
   join reports r on r.authority_id = a.id
    and r.is_test = false and r.excluded_from_ranking = false and r.admin_hidden = false
+  where a.is_active = true and a.is_test = false
   group by a.id, a.country_code, a.name_i18n, a.level
-  having count(*) filter (where r.status in ('notified','resolved')) >= 10;
+  having count(*) filter (
+    where r.notified_at is not null and r.status in ('notified','resolved')
+  ) >= 10;
+
+-- Public authority pages use anon-safe projections instead of bypassing RLS
+-- with the service role. No contact channel, geometry, or internal flags leak.
+create or replace view v_public_authorities with (security_barrier = true) as
+  select a.id, a.country_code, a.name_i18n, a.level
+  from authorities a
+  join countries c on c.code = a.country_code and c.is_active = true
+  where a.is_active = true and a.is_test = false;
+
+-- Only expose whether a published report has an active authority dispute. The
+-- response note and all non-public/test reports remain service-role only.
+create or replace view v_public_authority_disputes with (security_barrier = true) as
+  select distinct ar.authority_id
+  from authority_responses ar
+  join reports r on r.id = ar.report_id
+  join authorities a
+    on a.id = ar.authority_id and a.is_active = true and a.is_test = false
+  join countries c on c.code = r.country_code and c.is_active = true
+  where ar.authority_id is not null
+    and ar.response_type in ('disputed','not_responsible')
+    and r.status in ('in_review','notified','resolved')
+    and r.is_test = false
+    and r.admin_hidden = false
+    and exists (
+      select 1 from report_photos ph
+      where ph.report_id = r.id
+        and ph.blur_status = 'done'
+        and ph.public_path is not null
+    )
+    and not exists (
+      select 1 from report_photos ph
+      where ph.report_id = r.id
+        and (ph.blur_status <> 'done' or ph.public_path is null)
+    );
+
+revoke all on v_public_reports, v_public_report_photos, v_authority_scorecard,
+  v_public_authorities, v_public_authority_disputes, v_pending_report_pins
+  from public, anon, authenticated;
 
 grant select on v_public_reports        to anon, authenticated;
 grant select on v_public_report_photos  to anon, authenticated;
 grant select on v_authority_scorecard   to anon, authenticated;
-grant select on v_pending_report_pins   to anon, authenticated;
+grant select on v_public_authorities     to anon, authenticated;
+grant select on v_public_authority_disputes to anon, authenticated;
 
 -- ── Intake RPC: geofence + authority routing + insert, atomic ───────────────
 -- Called SERVER-SIDE ONLY (service role) from the rate-limited /api/report route,
@@ -380,7 +667,7 @@ create or replace function intake_report(
 language plpgsql
 as $$
 declare
-  v_point     geography := st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography;
+  v_point     geography;
   v_country   text;
   v_authority uuid;
   v_report_id uuid;
@@ -391,6 +678,18 @@ begin
     raise exception 'NO_PHOTOS' using errcode = 'P0001';
   end if;
 
+  if array_length(p_photo_paths, 1) > 4 then
+    raise exception 'TOO_MANY_PHOTOS' using errcode = 'P0001';
+  end if;
+
+  if p_lat is null or p_lng is null
+    or not (p_lat between -90 and 90)
+    or not (p_lng between -180 and 180) then
+    raise exception 'INVALID_COORDINATES' using errcode = 'P0001';
+  end if;
+
+  v_point := st_setsrid(st_makepoint(p_lng, p_lat), 4326)::geography;
+
   select code into v_country
   from countries
   where is_active = true
@@ -399,8 +698,8 @@ begin
   limit 1;
 
   -- STRICT geofence: a point outside every active country is rejected. The
-  -- caller (rate-limited /api/report) maps OUT_OF_BOUNDS to HTTP 422 and may opt
-  -- into a relaxed testing fallback. Never silently accept out-of-bounds reports.
+  -- caller (rate-limited /api/report) maps OUT_OF_BOUNDS to HTTP 422. There is
+  -- deliberately no relaxed fallback.
   if v_country is null then
     raise exception 'OUT_OF_BOUNDS' using errcode = 'P0001';
   end if;
@@ -409,9 +708,10 @@ begin
   from authorities
   where country_code = v_country
     and is_active = true
+    and is_test = false
     and geom is not null
     and st_covers(geom, v_point)
-  order by st_area(geom::geometry) asc
+  order by st_area(geom) asc
   limit 1;
 
   insert into reports (country_code, authority_id, category, description, geom, locale, author_token, status)
@@ -428,6 +728,9 @@ begin
   returning id, public_token into v_report_id, v_token;
 
   foreach v_path in array p_photo_paths loop
+    if v_path is null or btrim(v_path) = '' then
+      raise exception 'INVALID_PHOTO_PATH' using errcode = 'P0001';
+    end if;
     insert into report_photos (report_id, original_path) values (v_report_id, v_path);
   end loop;
 
@@ -478,6 +781,48 @@ as $$
 $$;
 revoke all on function set_authority_geom_geojson(uuid, text) from public;
 revoke all on function set_authority_geom_geojson(uuid, text) from anon, authenticated;
+
+-- Build a country's land geofence from its real, active authority polygons.
+-- Country importers can call this after loading municipality (or another level)
+-- geometries, so production never depends on the coarse development seed box.
+create or replace function refresh_country_boundary_from_authorities(
+  p_code text,
+  p_level text default 'municipality'
+)
+returns boolean
+language plpgsql
+as $$
+declare
+  v_boundary geography;
+begin
+  select st_multi(
+           st_collectionextract(
+             st_makevalid(
+               st_unaryunion(st_collect(a.geom::geometry))
+             ),
+             3
+           )
+         )::geography
+  into v_boundary
+  from authorities a
+  where a.country_code = p_code
+    and a.level = p_level
+    and a.is_active = true
+    and a.is_test = false
+    and a.geom is not null;
+
+  if v_boundary is null or st_isempty(v_boundary::geometry) then
+    return false;
+  end if;
+
+  update countries
+  set boundary = v_boundary
+  where code = p_code;
+  return found;
+end;
+$$;
+revoke all on function refresh_country_boundary_from_authorities(text, text) from public;
+revoke all on function refresh_country_boundary_from_authorities(text, text) from anon, authenticated;
 
 -- ── Admin moderation queue read (service-role only) ─────────────────────────
 -- Exposes lat/lng (decoded from geom) + authority + blur progress for the
@@ -548,13 +893,16 @@ as $$
               and r.status in ('submitted','in_review')),
          (select dl.status::text from delivery_logs dl
             join reports r2 on r2.id = dl.report_id
-            where r2.authority_id = a.id order by dl.created_at desc limit 1),
+            where r2.authority_id = a.id and r2.is_test = false
+            order by dl.created_at desc limit 1),
          (select dl.created_at from delivery_logs dl
             join reports r2 on r2.id = dl.report_id
-            where r2.authority_id = a.id order by dl.created_at desc limit 1),
+            where r2.authority_id = a.id and r2.is_test = false
+            order by dl.created_at desc limit 1),
          (select count(*)::int from delivery_logs dl
             join reports r3 on r3.id = dl.report_id
-            where r3.authority_id = a.id and dl.status in ('bounced','complained'))
+            where r3.authority_id = a.id and r3.is_test = false
+              and dl.status in ('bounced','complained'))
   from authorities a
   where a.is_test = false
   order by a.name_i18n->>'en' nulls last;
@@ -584,7 +932,8 @@ as $$
   from delivery_logs dl
   join reports r on r.id = dl.report_id
   left join authorities a on a.id = r.authority_id
-  where (p_status is null or dl.status::text = p_status)
+  where r.is_test = false
+    and (p_status is null or dl.status::text = p_status)
   order by dl.created_at desc
   limit 200;
 $$;
@@ -608,7 +957,8 @@ as $$
          cf.status::text, cf.created_at
   from content_flags cf
   join reports r on r.id = cf.report_id
-  where (p_status is null or cf.status::text = p_status)
+  where r.is_test = false
+    and (p_status is null or cf.status::text = p_status)
   order by cf.created_at desc
   limit 200;
 $$;
@@ -634,7 +984,8 @@ as $$
   from authority_responses ar
   join reports r on r.id = ar.report_id
   left join authorities a on a.id = ar.authority_id
-  where ar.response_type in ('disputed','not_responsible')
+  where r.is_test = false
+    and ar.response_type in ('disputed','not_responsible')
   order by ar.created_at desc
   limit 200;
 $$;
@@ -645,6 +996,7 @@ revoke all on function admin_list_disputes() from anon, authenticated;
 -- The app's in-memory limiter is per-serverless-instance and resets on cold
 -- start, so it cannot protect the admin login from brute force. This fixed-window
 -- counter is shared across all instances. Called SERVER-SIDE ONLY (service role).
+-- bucket_key receives an HMAC-pseudonymized identifier; raw IPs are never stored.
 create table if not exists rate_limits (
   bucket_key   text not null,
   window_start timestamptz not null,
@@ -664,6 +1016,14 @@ declare
   v_window_end   timestamptz;
   v_count        integer;
 begin
+  if p_key is null or char_length(p_key) < 16 or char_length(p_key) > 128 then
+    raise exception 'INVALID_RATE_LIMIT_KEY';
+  end if;
+  if p_limit is null or p_window_ms is null
+     or p_limit < 1 or p_limit > 10000
+     or p_window_ms < 1000 or p_window_ms > 604800000 then
+    raise exception 'INVALID_RATE_LIMIT_CONFIG';
+  end if;
   v_window_start := to_timestamp(floor(extract(epoch from clock_timestamp()) / v_secs) * v_secs);
   v_window_end   := v_window_start + make_interval(secs => v_secs);
 
@@ -675,7 +1035,7 @@ begin
 
   -- Opportunistic cleanup of stale windows (keeps the table tiny without a cron).
   if random() < 0.01 then
-    delete from rate_limits where window_start < clock_timestamp() - interval '1 day';
+    delete from rate_limits where window_start < clock_timestamp() - interval '8 days';
   end if;
 
   if v_count > p_limit then
@@ -861,9 +1221,12 @@ select jsonb_build_object(
      'median_resolve_hours',(select percentile_cont(0.5) within group (order by extract(epoch from (resolved_at-notified_at))/3600.0) from r where resolved_at is not null and notified_at is not null),
      'notified',(select count(*) from r where notified_at is not null),
      'resolved',(select count(*) from r where status='resolved')),
-  'delivery',(select jsonb_build_object('total',count(*),'delivered',count(*) filter(where status='delivered'),'sent',count(*) filter(where status='sent'),
-     'bounced',count(*) filter(where status='bounced'),'failed',count(*) filter(where status='failed'),'complained',count(*) filter(where status='complained'))
-     from delivery_logs dl,b where dl.created_at>=b.since),
+  'delivery',(select jsonb_build_object('total',count(*),'delivered',count(*) filter(where dl.status='delivered'),'sent',count(*) filter(where dl.status='sent'),
+     'bounced',count(*) filter(where dl.status='bounced'),'failed',count(*) filter(where dl.status='failed'),'complained',count(*) filter(where dl.status='complained'))
+     from delivery_logs dl
+     join reports dr on dr.id = dl.report_id and dr.is_test = false,
+     b
+     where dl.created_at>=b.since),
   'rejections', jsonb_build_object('total',(select count(*) from r where status='rejected'),
      'by_reason',(select coalesce(jsonb_agg(j order by cnt desc),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(reject_reason,'unspecified'),'count',count(*)) j,count(*) cnt from r where status='rejected' group by reject_reason) y)),
   'points',(select coalesce(jsonb_agg(jsonb_build_object('lat',st_y(geom::geometry),'lng',st_x(geom::geometry),'status',status::text)),'[]'::jsonb)
@@ -899,6 +1262,92 @@ create table if not exists admin_tasks (
 );
 alter table admin_tasks enable row level security;
 
+-- Supabase may have broad default privileges for API roles. RLS remains the
+-- primary boundary, but explicit revocation gives the base tables a second,
+-- auditable least-privilege layer. Only the safe views above are granted back.
+alter default privileges in schema public
+  revoke all on tables from public, anon, authenticated;
+alter default privileges in schema public
+  revoke all on functions from public, anon, authenticated;
+alter default privileges in schema public
+  revoke all on sequences from public, anon, authenticated;
+alter default privileges in schema public
+  grant all on tables to service_role;
+alter default privileges in schema public
+  grant execute on functions to service_role;
+alter default privileges in schema public
+  grant all on sequences to service_role;
+
+revoke all on table
+  countries,
+  authorities,
+  reports,
+  report_photos,
+  delivery_logs,
+  delivery_webhook_events,
+  authority_responses,
+  content_flags,
+  support_leads,
+  anon_devices,
+  report_votes,
+  push_subscriptions,
+  report_follows,
+  geocode_cache,
+  rate_limits,
+  web_events,
+  web_events_daily,
+  admin_tasks
+from public, anon, authenticated;
+
+grant all on table
+  countries,
+  authorities,
+  reports,
+  report_photos,
+  delivery_logs,
+  delivery_webhook_events,
+  authority_responses,
+  content_flags,
+  support_leads,
+  anon_devices,
+  report_votes,
+  push_subscriptions,
+  report_follows,
+  geocode_cache,
+  rate_limits,
+  web_events,
+  web_events_daily,
+  admin_tasks
+to service_role;
+
+grant select on
+  v_public_reports,
+  v_public_report_photos,
+  v_authority_scorecard,
+  v_public_authorities,
+  v_public_authority_disputes
+to service_role;
+
+grant execute on function set_updated_at() to service_role;
+grant execute on function refresh_report_vote_counts() to service_role;
+grant execute on function enforce_report_state_machine() to service_role;
+grant execute on function intake_report(double precision, double precision, text, text, text, text, text[]) to service_role;
+grant execute on function set_country_boundary(text, text) to service_role;
+grant execute on function set_authority_geom(uuid, text) to service_role;
+grant execute on function set_authority_geom_geojson(uuid, text) to service_role;
+grant execute on function refresh_country_boundary_from_authorities(text, text) to service_role;
+grant execute on function admin_list_reports(text) to service_role;
+grant execute on function admin_list_authorities() to service_role;
+grant execute on function admin_list_deliveries(text) to service_role;
+grant execute on function admin_list_flags(text) to service_role;
+grant execute on function admin_list_disputes() to service_role;
+grant execute on function apply_delivery_webhook(text, text, uuid, text, text, text, text, timestamptz) to service_role;
+grant execute on function rate_limit_hit(text, integer, bigint) to service_role;
+grant execute on function web_events_maintenance() to service_role;
+grant execute on function admin_web_analytics(integer) to service_role;
+grant execute on function admin_report_analytics(integer) to service_role;
+grant execute on function admin_report_stats(text) to service_role;
+
 -- ── Storage buckets (originals private, public anonymized) ──────────────────
 -- We only create the buckets. We deliberately do NOT touch storage.objects:
 --   • on Supabase it is owned by supabase_storage_admin (ALTER/CREATE POLICY
@@ -913,10 +1362,12 @@ do $$
 begin
   insert into storage.buckets (id, name, public)
     values ('report-originals', 'report-originals', false)
-    on conflict (id) do nothing;
+    on conflict (id) do update
+      set name = excluded.name, public = false;
   insert into storage.buckets (id, name, public)
     values ('report-public', 'report-public', true)
-    on conflict (id) do nothing;
+    on conflict (id) do update
+      set name = excluded.name, public = true;
 exception
   when insufficient_privilege then
     raise notice 'Skipped storage bucket creation (insufficient privilege). Create buckets "report-originals" (private) and "report-public" (public) in the Supabase dashboard.';

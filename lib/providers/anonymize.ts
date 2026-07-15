@@ -2,6 +2,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { readBodyBytes } from "@/lib/http-body";
+import { MAX_INPUT_PIXELS, normalizeUploadedImage } from "@/lib/image-upload";
 
 /**
  * Image anonymization provider — MANDATORY before any public surface.
@@ -26,6 +28,7 @@ export interface ImageAnonymizer {
 
 const ORIGINALS_BUCKET = "report-originals";
 const PUBLIC_BUCKET = "report-public";
+const MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 /** Download an original from the PRIVATE bucket (service-role only). */
 async function downloadOriginal(originalPath: string): Promise<Buffer | null> {
@@ -51,12 +54,13 @@ class DevBlurAnonymizer implements ImageAnonymizer {
     const input = await downloadOriginal(originalPath);
     if (!input) return { publicPath: "", status: "failed" };
 
-    const meta = await sharp(input).metadata();
+    const options = { failOn: "warning" as const, limitInputPixels: MAX_INPUT_PIXELS, animated: false };
+    const meta = await sharp(input, options).metadata();
     const w = meta.width ?? 1200;
 
     // Pixelate (downscale then upscale) + blur → no recognizable detail.
     const small = Math.max(16, Math.round(w / 24));
-    const pixelated = await sharp(input)
+    const pixelated = await sharp(input, options)
       .resize({ width: small })
       .blur(2)
       .resize({ width: Math.min(w, 1600) })
@@ -100,8 +104,14 @@ class HttpAnonymizer implements ImageAnonymizer {
         signal: AbortSignal.timeout(30_000),
       });
       if (!res.ok) return { publicPath: "", status: "failed" };
-      // Re-encode through sharp: strips metadata and guarantees a valid JPEG.
-      const out = await sharp(Buffer.from(await res.arrayBuffer())).jpeg({ quality: 82 }).toBuffer();
+      if (!(res.headers.get("content-type") ?? "").toLowerCase().startsWith("image/")) {
+        return { publicPath: "", status: "failed" };
+      }
+      // Bound chunked responses as well as Content-Length, then re-encode through
+      // the same safe decoder used at intake (format/pixel checks + metadata strip).
+      const out = await normalizeUploadedImage(
+        await readBodyBytes(res, MAX_PROVIDER_RESPONSE_BYTES),
+      );
 
       const publicPath = await uploadPublic(out);
       return publicPath ? { publicPath, status: "done" } : { publicPath: "", status: "failed" };

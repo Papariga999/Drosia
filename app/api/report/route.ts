@@ -1,12 +1,18 @@
 import { randomUUID } from "node:crypto";
-import sharp from "sharp";
 import { NextResponse } from "next/server";
 import { after } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { registerDevice } from "@/lib/anon-device";
 import { anonymizeReportPhotos } from "@/lib/anonymize-runner";
-import { reportFieldsSchema, validatePhotos, MAX_PHOTOS, type ReportFields } from "@/lib/report-intake";
+import {
+  reportFieldsSchema,
+  validatePhotos,
+  MAX_PHOTOS,
+  MAX_TOTAL_UPLOAD_BYTES,
+} from "@/lib/report-intake";
+import { readMultipartFormData, RequestBodyError } from "@/lib/http-body";
+import { normalizeUploadedImage, ImageValidationError } from "@/lib/image-upload";
 
 /**
  * POST /api/report — login-free report submission (Phase 1 core loop).
@@ -14,10 +20,8 @@ import { reportFieldsSchema, validatePhotos, MAX_PHOTOS, type ReportFields } fro
  *   validate → compress (sharp) → upload originals (private bucket) →
  *   intake_report RPC (country detection + authority routing ST_Contains, atomic)
  *
- * Temporary worldwide testing: older live DBs may still throw OUT_OF_BOUNDS; in
- * that case we insert an unrouted review item with country/authority null.
- * Atomicity: if every insert path fails, the just-uploaded blobs are deleted.
- * Anonymization is kicked off best-effort;
+ * Geofencing is strict: out-of-bounds reports are rejected and uploaded blobs
+ * are deleted. Anonymization is kicked off best-effort;
  * the report stays non-public until blur_status='done' (Phase 2 anonymizer).
  */
 export const runtime = "nodejs";
@@ -25,6 +29,7 @@ export const runtime = "nodejs";
 const ORIGINALS_BUCKET = "report-originals";
 const RATE_LIMIT = 5; // submissions
 const RATE_WINDOW_MS = 10 * 60 * 1000; // per 10 minutes per IP
+const MAX_MULTIPART_BYTES = MAX_TOTAL_UPLOAD_BYTES + 512 * 1024;
 
 function configured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,7 +45,9 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const ip = clientIp(req.headers);
-  const limit = await rateLimitDurable(`report:${ip}`, RATE_LIMIT, RATE_WINDOW_MS);
+  const limit = await rateLimitDurable(`report:${ip}`, RATE_LIMIT, RATE_WINDOW_MS, {
+    failClosedInProduction: true,
+  });
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many reports. Please try again later." },
@@ -50,13 +57,17 @@ export async function POST(req: Request): Promise<Response> {
 
   let form: FormData;
   try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: "Expected multipart/form-data." }, { status: 400 });
+    form = await readMultipartFormData(req, MAX_MULTIPART_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    return NextResponse.json({ error: "Malformed upload." }, { status: 400 });
   }
 
   // Honeypot: silently reject bots that fill the hidden field.
-  if ((form.get("website") as string)?.length) {
+  const website = form.get("website");
+  if (typeof website === "string" && website.length) {
     return NextResponse.json({ error: "Invalid submission." }, { status: 400 });
   }
 
@@ -78,25 +89,42 @@ export async function POST(req: Request): Promise<Response> {
   }
   const fields = parsed.data;
 
-  const photos = form.getAll("photos").filter((p): p is File => p instanceof File).slice(0, MAX_PHOTOS);
+  const photoParts = form.getAll("photos");
+  if (photoParts.length > MAX_PHOTOS || photoParts.some((part) => !(part instanceof File))) {
+    return NextResponse.json({ error: `At most ${MAX_PHOTOS} valid photos allowed` }, { status: 400 });
+  }
+  const photos = photoParts as File[];
   const photoCheck = validatePhotos(photos.map((p) => ({ size: p.size, type: p.type })));
   if (!photoCheck.ok) {
     return NextResponse.json({ error: photoCheck.error }, { status: 400 });
   }
 
+  // Decode and normalize every frame before writing any blob. MIME declarations
+  // are only a first filter; Sharp verifies the actual encoding and pixel count.
+  const normalizedPhotos: Buffer[] = [];
+  try {
+    for (const photo of photos) {
+      normalizedPhotos.push(await normalizeUploadedImage(new Uint8Array(await photo.arrayBuffer())));
+    }
+  } catch (error) {
+    if (error instanceof ImageValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Image validation failed." }, { status: 400 });
+  }
+
   const admin = getSupabaseAdmin();
   const storage = admin.storage.from(ORIGINALS_BUCKET);
   const uploaded: string[] = [];
+  const cleanupUploaded = async (): Promise<void> => {
+    if (!uploaded.length) return;
+    const { error } = await storage.remove([...uploaded]);
+    if (error) throw new Error(`uploaded blob cleanup failed: ${error.message}`);
+    uploaded.length = 0;
+  };
 
   try {
-    for (const photo of photos) {
-      const input = Buffer.from(await photo.arrayBuffer());
-      const compressed = await sharp(input)
-        .rotate() // honor EXIF orientation
-        .resize({ width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
-        .jpeg({ quality: 82 })
-        .toBuffer();
-
+    for (const compressed of normalizedPhotos) {
       const path = `originals/${randomUUID()}.jpg`;
       const { error } = await storage.upload(path, compressed, {
         contentType: "image/jpeg",
@@ -116,23 +144,16 @@ export async function POST(req: Request): Promise<Response> {
       p_author_token: fields.authorToken,
       p_photo_paths: uploaded,
     } as never;
-    // Geofence is STRICT by default: a point outside every active country is
-    // rejected (principle §2.3 / §5.1 — "Berlin/sea out"). Set GEOFENCE_RELAXED=true
-    // ONLY for cross-country testing; never in production.
-    const relaxed = process.env.GEOFENCE_RELAXED === "true";
-
+    // Geofence is always strict: a point outside every active country is rejected.
     const { data: rpcToken, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
 
-    let token = rpcToken as string | null;
+    const token = rpcToken as string | null;
     if (rpcError) {
       if (rpcError.message.includes("OUT_OF_BOUNDS")) {
-        if (!relaxed) {
-          await storage.remove(uploaded);
-          return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
-        }
-        token = await insertUnroutedReport(fields, uploaded);
+        await cleanupUploaded();
+        return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
       } else {
-        await storage.remove(uploaded); // atomic cleanup — never orphan blobs
+        await cleanupUploaded(); // atomic cleanup — never orphan blobs
         throw new Error(rpcError.message);
       }
     }
@@ -141,17 +162,16 @@ export async function POST(req: Request): Promise<Response> {
     // Belt-and-suspenders: enforce the geofence in code too, so it holds even on
     // a DB whose intake_report predates the strict (OUT_OF_BOUNDS) behavior. If the
     // point fell outside every active country, country_code is null → reject.
-    if (!relaxed) {
-      const { data: routed } = await admin
-        .from("reports")
-        .select("id, country_code")
-        .eq("public_token", token)
-        .maybeSingle<{ id: string; country_code: string | null }>();
-      if (routed && !routed.country_code) {
-        await admin.from("reports").delete().eq("id", routed.id); // cascades to report_photos
-        await storage.remove(uploaded).catch(() => {});
-        return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
-      }
+    const { data: routed } = await admin
+      .from("reports")
+      .select("id, country_code")
+      .eq("public_token", token)
+      .maybeSingle<{ id: string; country_code: string | null }>();
+    if (routed && !routed.country_code) {
+      const { error: deleteError } = await admin.from("reports").delete().eq("id", routed.id);
+      if (deleteError) throw new Error(`out-of-bounds report cleanup failed: ${deleteError.message}`);
+      await cleanupUploaded();
+      return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
     }
 
     // Anonymize off the hot path: after() runs once the response is flushed, so a
@@ -177,41 +197,12 @@ export async function POST(req: Request): Promise<Response> {
 
     return NextResponse.json({ token, status: "submitted" }, { status: 201 });
   } catch (err) {
-    if (uploaded.length) await storage.remove(uploaded).catch(() => {});
+    try {
+      await cleanupUploaded();
+    } catch (cleanupError) {
+      console.error("[/api/report] CRITICAL: orphan upload cleanup failed:", cleanupError);
+    }
     console.error("[/api/report] submit failed:", err);
     return NextResponse.json({ error: "Submission failed. Please try again." }, { status: 500 });
   }
-}
-
-async function insertUnroutedReport(fields: ReportFields, photoPaths: string[]): Promise<string> {
-  const admin = getSupabaseAdmin();
-  const point = `SRID=4326;POINT(${fields.lng} ${fields.lat})`;
-
-  const { data: report, error: reportError } = await admin
-    .from("reports")
-    .insert({
-      country_code: null,
-      authority_id: null,
-      category: fields.category,
-      description: fields.description || null,
-      geom: point,
-      locale: fields.locale,
-      author_token: fields.authorToken || null,
-      status: "submitted",
-    } as never)
-    .select("id, public_token")
-    .single<{ id: string; public_token: string }>();
-
-  if (reportError || !report) {
-    throw new Error(reportError?.message ?? "fallback insert failed");
-  }
-
-  const photoRows = photoPaths.map((path) => ({ report_id: report.id, original_path: path }));
-  const { error: photosError } = await admin.from("report_photos").insert(photoRows as never);
-  if (photosError) {
-    await admin.from("reports").delete().eq("id", report.id);
-    throw new Error(photosError.message);
-  }
-
-  return report.public_token;
 }

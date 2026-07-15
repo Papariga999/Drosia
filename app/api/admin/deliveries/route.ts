@@ -5,11 +5,24 @@ import type { AdminDeliveryRow, DeliveryHealth } from "@/lib/admin/types";
 
 export const runtime = "nodejs";
 
+const DELIVERY_STATUSES = new Set([
+  "queued",
+  "sent",
+  "delivered",
+  "delayed",
+  "bounced",
+  "failed",
+  "complained",
+]);
+
 /** GET /api/admin/deliveries?status= — delivery & bounce monitor (recent 200). */
 export async function GET(req: Request): Promise<Response> {
   if (!(await verifySession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const status = new URL(req.url).searchParams.get("status");
+  if (status !== null && !DELIVERY_STATUSES.has(status)) {
+    return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+  }
   const { data, error } = await getSupabaseAdmin().rpc("admin_list_deliveries", { p_status: status } as never);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
@@ -16,8 +17,17 @@ function n(v: unknown): number {
   return typeof v === "number" ? v : Number(v ?? 0) || 0;
 }
 
+function weekStartUtc(now = new Date()): string {
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - daysSinceMonday);
+  return date.toISOString().slice(0, 10);
+}
+
 export async function GET(req: Request): Promise<Response> {
-  const secret = process.env.CRON_SECRET || process.env.WEBHOOK_SECRET;
+  const secret =
+    process.env.CRON_SECRET ||
+    (process.env.NODE_ENV === "production" ? undefined : process.env.WEBHOOK_SECRET);
   const auth = req.headers.get("authorization") ?? "";
   const expected = Buffer.from(`Bearer ${secret ?? ""}`);
   const got = Buffer.from(auth);
@@ -27,12 +37,19 @@ export async function GET(req: Request): Promise<Response> {
 
   const to = (process.env.FOUNDER_EMAILS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (!to.length) return NextResponse.json({ skipped: "FOUNDER_EMAILS not set" });
+  if (to.some((email) => !z.string().email().safeParse(email).success)) {
+    return NextResponse.json({ error: "FOUNDER_EMAILS contains an invalid address." }, { status: 500 });
+  }
 
   const admin = getSupabaseAdmin();
-  const [{ data: web }, { data: rep }] = await Promise.all([
+  const [{ data: web, error: webError }, { data: rep, error: reportError }] = await Promise.all([
     admin.rpc("admin_web_analytics", { p_days: 7 } as never),
     admin.rpc("admin_report_analytics", { p_days: 7 } as never),
   ]);
+  if (webError || reportError) {
+    console.error("[/api/cron/weekly-digest] analytics failed:", webError?.message ?? reportError?.message);
+    return NextResponse.json({ error: "Digest data unavailable." }, { status: 503 });
+  }
 
   const w = (web ?? {}) as { web?: Record<string, unknown>; funnel?: Record<string, unknown> };
   const r = (rep ?? {}) as { totals?: { reports?: number }; resolution?: Record<string, unknown> };
@@ -72,7 +89,15 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const { Resend } = await import("resend");
-    const { error } = await new Resend(apiKey).emails.send({ from, to, subject, text });
+    const send = new Resend(apiKey).emails.send(
+      { from, to, subject, text, tags: [{ name: "drosia_kind", value: "weekly_digest" }] },
+      { idempotencyKey: `weekly-digest/${weekStartUtc()}` },
+    );
+    void send.catch(() => {});
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Resend send timed out after 15s")), 15_000),
+    );
+    const { error } = await Promise.race([send, timeout]);
     if (error) return NextResponse.json({ delivery: "failed", error: error.message }, { status: 502 });
     return NextResponse.json({ delivery: "sent", recipients: to.length });
   } catch (e) {

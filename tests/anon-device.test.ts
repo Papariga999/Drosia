@@ -53,6 +53,7 @@ describe("ensureKnownDevice (anti-vote-inflation gate)", () => {
       "device-reg:1.2.3.4",
       NEW_DEVICE_LIMIT,
       NEW_DEVICE_WINDOW_MS,
+      { failClosedInProduction: true },
     );
   });
 

@@ -1,100 +1,126 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { readBodyBytes, RequestBodyError } from "@/lib/http-body";
+import { verifyBearerHeader, verifySvixSignature } from "@/lib/webhooks/resend";
+import { notifyForwardedReportFollowers } from "@/lib/push/report-status";
 
 export const runtime = "nodejs";
 
-/**
- * POST /api/webhooks/resend — deliverability feedback (P0: never a silent failure).
- * Resend posts email.delivered / email.bounced / email.complained events; we map
- * them onto the matching delivery_logs row (by provider_message_id = email id) so
- * the admin delivery monitor shows real status and bounces surface immediately.
- *
- * Auth: prefer Resend's Svix signature (RESEND_WEBHOOK_SECRET = whsec_…). If that
- * isn't configured, fall back to a shared Bearer WEBHOOK_SECRET. With neither set
- * (and not in dev) the endpoint refuses — an unauthenticated webhook would let
- * anyone forge delivery state.
- */
-const STATUS_BY_EVENT: Record<string, "delivered" | "bounced" | "complained" | "sent"> = {
-  "email.delivered": "delivered",
-  "email.bounced": "bounced",
-  "email.complained": "complained",
+const MAX_WEBHOOK_BYTES = 256 * 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const STATUS_BY_EVENT = {
   "email.sent": "sent",
-};
+  "email.delivered": "delivered",
+  "email.delivery_delayed": "delayed",
+  "email.bounced": "bounced",
+  "email.failed": "failed",
+  "email.complained": "complained",
+} as const;
 
-function verifyBearer(req: Request): boolean {
-  const expected = process.env.WEBHOOK_SECRET;
-  if (!expected) return false;
-  const got = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  const a = Buffer.from(got);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+const eventSchema = z
+  .object({
+    type: z.string().min(1).max(100),
+    created_at: z.string().datetime({ offset: true }),
+    data: z
+      .object({
+        email_id: z.string().min(1).max(200).optional(),
+        tags: z.record(z.string().max(200)).optional(),
+        bounce: z.object({ message: z.string().max(2000).optional() }).passthrough().optional(),
+        error: z
+          .union([
+            z.string().max(2000),
+            z.object({ message: z.string().max(2000).optional() }).passthrough(),
+          ])
+          .optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
-/** Svix tolerance: reject signed payloads older/newer than 5 minutes (replay guard). */
-const SVIX_TOLERANCE_SECONDS = 5 * 60;
-
-/** Manual Svix verification (no extra dependency). */
-function verifySvix(req: Request, rawBody: string): boolean {
-  const secret = process.env.RESEND_WEBHOOK_SECRET;
-  if (!secret) return false;
-  const id = req.headers.get("svix-id");
-  const timestamp = req.headers.get("svix-timestamp");
-  const signatureHeader = req.headers.get("svix-signature");
-  if (!id || !timestamp || !signatureHeader) return false;
-
-  // A valid signature over a stale timestamp is a replay, not a delivery event.
-  const ts = Number(timestamp);
-  if (!Number.isFinite(ts)) return false;
-  if (Math.abs(Date.now() / 1000 - ts) > SVIX_TOLERANCE_SECONDS) return false;
-
-  const key = Buffer.from(secret.replace(/^whsec_/, ""), "base64");
-  const signedContent = `${id}.${timestamp}.${rawBody}`;
-  const expected = createHmac("sha256", key).update(signedContent).digest("base64");
-
-  // Header is a space-separated list of "v1,<base64sig>" entries.
-  for (const part of signatureHeader.split(" ")) {
-    const sig = part.split(",")[1];
-    if (!sig) continue;
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length === b.length && timingSafeEqual(a, b)) return true;
-  }
-  return false;
+function eventError(event: z.infer<typeof eventSchema>): string | null {
+  if (event.data.bounce?.message) return event.data.bounce.message;
+  if (typeof event.data.error === "string") return event.data.error;
+  return event.data.error?.message ?? null;
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const rawBody = await req.text();
+  let rawBody: string;
+  try {
+    const bytes = await readBodyBytes(req, MAX_WEBHOOK_BYTES);
+    rawBody = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch (error) {
+    const status = error instanceof RequestBodyError ? error.status : 400;
+    return NextResponse.json({ error: "Bad request." }, { status });
+  }
 
-  const authed =
-    (process.env.RESEND_WEBHOOK_SECRET && verifySvix(req, rawBody)) ||
-    (process.env.WEBHOOK_SECRET && verifyBearer(req));
-  if (!authed) {
+  // Once a provider signing secret is configured it is the only accepted auth
+  // method. Bearer is a migration/development fallback, not a bypass for a bad
+  // Svix signature.
+  const signingSecret = process.env.RESEND_WEBHOOK_SECRET;
+  const bearerSecret = process.env.WEBHOOK_SECRET;
+  const signed = !!signingSecret && verifySvixSignature(req.headers, rawBody, signingSecret);
+  const bearer =
+    !signingSecret &&
+    !!bearerSecret &&
+    verifyBearerHeader(req.headers.get("authorization"), bearerSecret);
+  if (!signed && !bearer) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let event: { type?: string; data?: { email_id?: string; bounce?: { message?: string } } };
+  let rawEvent: unknown;
   try {
-    event = JSON.parse(rawBody);
+    rawEvent = JSON.parse(rawBody);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
+  const parsed = eventSchema.safeParse(rawEvent);
+  if (!parsed.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  const event = parsed.data;
 
-  const status = event.type ? STATUS_BY_EVENT[event.type] : undefined;
-  const emailId = event.data?.email_id;
-  // Ack unknown event types / missing id so Resend doesn't retry forever.
-  if (!status || !emailId) return NextResponse.json({ ok: true, ignored: true });
+  const status = STATUS_BY_EVENT[event.type as keyof typeof STATUS_BY_EVENT];
+  if (!status) return NextResponse.json({ ok: true, ignored: true });
+  const emailId = event.data.email_id;
+  if (!emailId) return NextResponse.json({ error: "Bad request." }, { status: 400 });
 
-  const update: { status: string; error?: string } = { status };
-  if (status === "bounced" || status === "complained") {
-    update.error = event.data?.bounce?.message ?? event.type;
+  const svixId = req.headers.get("svix-id");
+  const eventId = svixId || `bearer:${createHash("sha256").update(rawBody).digest("hex")}`;
+  const taggedLogId = event.data.tags?.delivery_log_id;
+  const deliveryLogId = taggedLogId && UUID.test(taggedLogId) ? taggedLogId : null;
+  const isAuthorityDelivery =
+    event.data.tags?.drosia_kind === "authority_report" || taggedLogId !== undefined;
+
+  const { data, error } = await getSupabaseAdmin().rpc("apply_delivery_webhook", {
+    p_provider: "resend",
+    p_event_id: eventId,
+    p_delivery_log_id: deliveryLogId,
+    p_provider_message_id: emailId,
+    p_event_type: event.type,
+    p_status: status,
+    p_error: eventError(event),
+    p_event_at: event.created_at,
+  } as never);
+  if (error) {
+    console.error("[/api/webhooks/resend] apply failed:", error.message);
+    return NextResponse.json({ error: "Webhook processing failed." }, { status: 503 });
   }
 
-  const { error } = await getSupabaseAdmin()
-    .from("delivery_logs")
-    .update(update as never)
-    .eq("provider_message_id", emailId);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  const result = data as string | null;
+  if (result === "not_found" && isAuthorityDelivery) {
+    // The send may have completed before its log id/provider id was committed.
+    // Ask Resend to retry rather than acknowledging and losing the event.
+    return NextResponse.json({ error: "Delivery log not ready." }, { status: 503 });
+  }
+  if (result === "not_found") return NextResponse.json({ ok: true, ignored: true });
+  if (result === "applied" && status === "delivered") {
+    const { data: log } = await getSupabaseAdmin()
+      .from("delivery_logs")
+      .select("report_id")
+      .eq("provider_message_id", emailId)
+      .maybeSingle<{ report_id: string }>();
+    if (log?.report_id) await notifyForwardedReportFollowers(log.report_id);
+  }
+  return NextResponse.json({ ok: true, result });
 }

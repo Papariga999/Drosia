@@ -6,6 +6,8 @@ import type { AdminReportRow } from "@/lib/admin/types";
 
 export const runtime = "nodejs";
 
+const REPORT_STATUSES = new Set(["submitted", "in_review", "notified", "resolved", "rejected"]);
+
 /** GET /api/admin/reports?status=submitted — moderation queue (service role). */
 export async function GET(req: Request): Promise<Response> {
   if (!(await verifySession())) {
@@ -14,6 +16,9 @@ export async function GET(req: Request): Promise<Response> {
 
   const admin = getSupabaseAdmin();
   const status = new URL(req.url).searchParams.get("status");
+  if (status !== null && !REPORT_STATUSES.has(status)) {
+    return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+  }
   const { data, error } = await admin.rpc("admin_list_reports", {
     p_status: status,
   } as never);

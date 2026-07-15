@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { readJsonBody, RequestBodyError } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -13,9 +15,18 @@ export const runtime = "nodejs";
  * team (reply-to = the submitter) so they can reply personally. NOT a citizen
  * report — this never touches the reports pipeline or anything public.
  */
-const ROLES = ["hotel", "municipality", "ngo", "local", "other"];
-const LOCALES = ["el", "en", "de"];
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const bodySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    organisation: z.string().trim().max(160).optional().default(""),
+    email: z.string().trim().email().max(200),
+    role: z.enum(["hotel", "municipality", "ngo", "local", "other"]),
+    place: z.string().trim().max(200).optional().default(""),
+    message: z.string().trim().min(1).max(2000),
+    locale: z.enum(["el", "en", "de"]).optional(),
+    website: z.string().optional().default(""),
+  })
+  .strict();
 
 const ROLE_LABEL: Record<string, string> = {
   hotel: "Hotel / tourism business",
@@ -93,40 +104,42 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const ip = clientIp(req.headers);
-  const limit = await rateLimitDurable(`support:${ip}`, 5, 10 * 60 * 1000);
-  if (!limit.ok) return NextResponse.json({ error: "Too many messages." }, { status: 429 });
-
-  let body: {
-    name?: string;
-    organisation?: string;
-    email?: string;
-    role?: string;
-    place?: string;
-    message?: string;
-    locale?: string;
-    website?: string;
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Bad request." }, { status: 400 });
+  const limit = await rateLimitDurable(`support:${ip}`, 5, 10 * 60 * 1000, {
+    failClosedInProduction: true,
+  });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many messages." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
-  // Honeypot: silently accept (so bots see success) but store nothing.
-  if (body.website?.length) return NextResponse.json({ ok: true });
+  let raw: unknown;
+  try {
+    raw = await readJsonBody(req);
+  } catch (error) {
+    const status = error instanceof RequestBodyError ? error.status : 400;
+    return NextResponse.json({ error: "Bad request." }, { status });
+  }
 
-  const name = (body.name ?? "").trim().slice(0, 120);
-  const email = (body.email ?? "").trim().slice(0, 200);
-  const role = (body.role ?? "").trim();
-  const message = (body.message ?? "").trim().slice(0, 2000);
-  const organisation = (body.organisation ?? "").trim().slice(0, 160) || null;
-  const place = (body.place ?? "").trim().slice(0, 200) || null;
-  const locale = typeof body.locale === "string" && LOCALES.includes(body.locale) ? body.locale : null;
+  // Honeypot: silently accept (so bots see success) but store nothing. Check it
+  // before strict validation because bot payloads are often otherwise malformed.
+  if (
+    raw &&
+    typeof raw === "object" &&
+    "website" in raw &&
+    typeof raw.website === "string" &&
+    raw.website.length
+  ) {
+    return NextResponse.json({ ok: true });
+  }
 
-  if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
-  if (!EMAIL_RE.test(email)) return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
-  if (!ROLES.includes(role)) return NextResponse.json({ error: "Please choose what best describes you." }, { status: 400 });
-  if (!message) return NextResponse.json({ error: "A message is required." }, { status: 400 });
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) return NextResponse.json({ error: "Validation failed." }, { status: 400 });
+  const { name, email, role, message } = parsed.data;
+  const organisation = parsed.data.organisation || null;
+  const place = parsed.data.place || null;
+  const locale = parsed.data.locale ?? null;
 
   const lead: Lead = { name, organisation, email, role, place, message, locale };
 

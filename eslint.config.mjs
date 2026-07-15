@@ -18,10 +18,15 @@ const config = [
   {
     ignores: [
       ".next/**",
+      ".vercel/**",
       "node_modules/**",
       "Design/**",
       "design_handoff/**",
       "scripts/**",
+      // design-sync build output + staged converter (generated, gitignored)
+      ".ds-sync/**",
+      "ds-bundle/**",
+      ".design-sync/.cache/**",
     ],
   },
 ];

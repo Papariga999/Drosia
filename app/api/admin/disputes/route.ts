@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/admin/session";
+import { verifyAdminMutation, verifySession } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { AdminDisputeRow } from "@/lib/admin/types";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -17,20 +18,26 @@ export async function GET(): Promise<Response> {
 
 /** POST /api/admin/disputes { reportId, excluded } — toggle excluded_from_ranking. */
 export async function POST(req: Request): Promise<Response> {
-  if (!(await verifySession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await verifyAdminMutation(req))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   let body: { reportId?: string; excluded?: boolean };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
   const id = body.reportId ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid reportId." }, { status: 400 });
+  if (typeof body.excluded !== "boolean") {
+    return NextResponse.json({ error: "Missing 'excluded' boolean." }, { status: 400 });
+  }
 
-  const { error } = await getSupabaseAdmin()
+  const { data, error } = await getSupabaseAdmin()
     .from("reports")
-    .update({ excluded_from_ranking: body.excluded !== false } as never)
-    .eq("id", id);
+    .update({ excluded_from_ranking: body.excluded } as never)
+    .eq("id", id)
+    .select("id")
+    .maybeSingle<{ id: string }>();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!data) return NextResponse.json({ error: "Report not found." }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

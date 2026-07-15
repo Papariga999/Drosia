@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { ensureKnownDevice } from "@/lib/anon-device";
+import { readJsonBody, RequestBodyError } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -25,13 +26,13 @@ function configured(): boolean {
   return !!url && !url.includes("YOUR_PROJECT") && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
 }
 
-const PUBLISHED = ["in_review", "notified", "resolved"];
-
 export async function POST(req: Request): Promise<Response> {
   if (!configured()) return NextResponse.json({ error: "Backend not configured." }, { status: 503 });
 
   const ip = clientIp(req.headers);
-  const limit = await rateLimitDurable(`vote:${ip}`, 30, 10 * 60 * 1000);
+  const limit = await rateLimitDurable(`vote:${ip}`, 30, 10 * 60 * 1000, {
+    failClosedInProduction: true,
+  });
   if (!limit.ok) {
     return NextResponse.json(
       { error: "Too many votes." },
@@ -41,9 +42,10 @@ export async function POST(req: Request): Promise<Response> {
 
   let raw: unknown;
   try {
-    raw = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Bad request." }, { status: 400 });
+    raw = await readJsonBody(req);
+  } catch (error) {
+    const status = error instanceof RequestBodyError ? error.status : 400;
+    return NextResponse.json({ error: "Bad request." }, { status });
   }
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) return NextResponse.json({ error: "Validation failed." }, { status: 400 });
@@ -64,11 +66,11 @@ export async function POST(req: Request): Promise<Response> {
 
   const admin = getSupabaseAdmin();
   const { data: report } = await admin
-    .from("reports")
+    .from("v_public_reports")
     .select("id, status, vote_count, confirm_count")
     .eq("public_token", token)
     .maybeSingle<{ id: string; status: string; vote_count: number; confirm_count: number }>();
-  if (!report || !PUBLISHED.includes(report.status)) {
+  if (!report) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }
 

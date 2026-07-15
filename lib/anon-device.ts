@@ -46,7 +46,9 @@ export async function ensureKnownDevice(deviceToken: string, ip: string): Promis
     return { ok: true };
   }
 
-  const limit = await rateLimitDurable(`device-reg:${ip}`, NEW_DEVICE_LIMIT, NEW_DEVICE_WINDOW_MS);
+  const limit = await rateLimitDurable(`device-reg:${ip}`, NEW_DEVICE_LIMIT, NEW_DEVICE_WINDOW_MS, {
+    failClosedInProduction: true,
+  });
   if (!limit.ok) return { ok: false, retryAfterSeconds: limit.retryAfterSeconds };
 
   // Concurrent first-use of the same token is fine: the unique constraint makes

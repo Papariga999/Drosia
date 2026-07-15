@@ -1,3 +1,6 @@
+import "server-only";
+import { createHmac } from "node:crypto";
+
 /**
  * In-memory fixed-window IP rate limiter.
  *
@@ -47,14 +50,37 @@ export function clientIp(headers: Headers): string {
     const cf = headers.get("cf-connecting-ip");
     if (cf) return cf.trim();
   }
-  const vercel = headers.get("x-vercel-forwarded-for");
-  if (vercel) return vercel.split(",")[0]!.trim();
-  const real = headers.get("x-real-ip");
-  if (real) return real.trim();
-  // Last resort: leftmost x-forwarded-for. Client-spoofable, so only a fallback.
-  const fwd = headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
+  // Vercel overwrites these at its edge. Do not trust the same names merely
+  // because a client sent them to a self-hosted Node process.
+  if (process.env.VERCEL === "1") {
+    const vercel = headers.get("x-vercel-forwarded-for") ?? headers.get("x-forwarded-for");
+    if (vercel) return vercel.split(",")[0]!.trim().slice(0, 64);
+    const real = headers.get("x-real-ip");
+    if (real) return real.trim().slice(0, 64);
+  }
+  // Generic reverse proxies must be opted into explicitly and configured to
+  // overwrite, not append to, inbound forwarding headers.
+  if (process.env.TRUST_PROXY_HEADER === "true") {
+    const fwd = headers.get("x-forwarded-for") ?? headers.get("x-real-ip");
+    if (fwd) return fwd.split(",")[0]!.trim().slice(0, 64);
+  }
   return "unknown";
+}
+
+/** Pseudonymize rate-limit identifiers before any durable database write. */
+export function pseudonymousRateLimitKey(key: string): string {
+  const secret =
+    process.env.RATE_LIMIT_SECRET ||
+    process.env.ADMIN_SESSION_SECRET ||
+    process.env.WEBHOOK_SECRET ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    "drosia-development-rate-limit-key";
+  return `v1:${createHmac("sha256", secret).update(key).digest("hex")}`;
+}
+
+export interface DurableRateLimitOptions {
+  /** A missing/broken DB limiter must not become a production auth bypass. */
+  failClosedInProduction?: boolean;
 }
 
 /**
@@ -68,11 +94,12 @@ export async function rateLimitDurable(
   key: string,
   limit: number,
   windowMs: number,
+  options: DurableRateLimitOptions = {},
 ): Promise<RateLimitResult> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const { data, error } = await getSupabaseAdmin().rpc("rate_limit_hit", {
-      p_key: key,
+      p_key: pseudonymousRateLimitKey(key),
       p_limit: limit,
       p_window_ms: windowMs,
     } as never);
@@ -87,6 +114,9 @@ export async function rateLimitDurable(
       retryAfterSeconds: row.allowed ? 0 : Math.max(1, Number(row.retry_after_seconds ?? 1)),
     };
   } catch {
+    if (options.failClosedInProduction && process.env.NODE_ENV === "production") {
+      return { ok: false, remaining: 0, retryAfterSeconds: 60 };
+    }
     return rateLimit(key, limit, windowMs);
   }
 }

@@ -12,23 +12,36 @@ import { REPORT_PUBLIC_BUCKET, REPORT_ORIGINALS_BUCKET } from "@/lib/storage";
  * Use for test reports or content that must be erased entirely; for reversible
  * takedown prefer reject (status) or admin_hidden (unpublish).
  */
-export async function deleteReportCompletely(reportId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function deleteReportCompletely(
+  reportId: string,
+): Promise<{ ok: true } | { ok: false; error: string; notFound?: boolean }> {
   const admin = getSupabaseAdmin();
 
-  const { data: photos } = await admin
+  const { data: report, error: reportError } = await admin
+    .from("reports")
+    .select("id")
+    .eq("id", reportId)
+    .maybeSingle<{ id: string }>();
+  if (reportError) return { ok: false, error: reportError.message };
+  if (!report) return { ok: false, error: "Report not found.", notFound: true };
+
+  const { data: photos, error: photoError } = await admin
     .from("report_photos")
     .select("original_path, public_path")
     .eq("report_id", reportId)
     .returns<{ original_path: string | null; public_path: string | null }[]>();
+  if (photoError) return { ok: false, error: photoError.message };
 
   const originals = (photos ?? []).map((p) => p.original_path).filter((p): p is string => !!p);
   const publics = (photos ?? []).map((p) => p.public_path).filter((p): p is string => !!p);
 
   if (originals.length) {
-    await admin.storage.from(REPORT_ORIGINALS_BUCKET).remove(originals).catch(() => {});
+    const { error } = await admin.storage.from(REPORT_ORIGINALS_BUCKET).remove(originals);
+    if (error) return { ok: false, error: `Original photo deletion failed: ${error.message}` };
   }
   if (publics.length) {
-    await admin.storage.from(REPORT_PUBLIC_BUCKET).remove(publics).catch(() => {});
+    const { error } = await admin.storage.from(REPORT_PUBLIC_BUCKET).remove(publics);
+    if (error) return { ok: false, error: `Public photo deletion failed: ${error.message}` };
   }
 
   const { error } = await admin.from("reports").delete().eq("id", reportId);

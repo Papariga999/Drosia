@@ -1,11 +1,11 @@
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
 import { LOCALES, type Locale } from "./i18n";
-import { isReportCategory, type ReportCategory } from "./categories";
+import { isReportCategory } from "./categories";
 import { anonymizedPhotoUrl } from "./storage";
 import { distanceKm } from "./geo";
 import type { NearbyReport, PublicReport } from "./mock";
 import { MOCK_REPORTS } from "./mock";
+import { getSupabasePublic, publicSupabaseConfigured } from "./supabase/public";
 
 /**
  * Server-side public reads. ALWAYS go through the SQL views
@@ -18,20 +18,11 @@ import { MOCK_REPORTS } from "./mock";
  * production a missing config returns empty — we never invent public data.
  */
 function supabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  return !!url && !url.includes("YOUR_PROJECT");
+  return publicSupabaseConfigured();
 }
 
 function isProd(): boolean {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
-}
-
-function publicClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
-    { auth: { persistSession: false } },
-  );
 }
 
 const REPORT_COLUMNS =
@@ -90,7 +81,7 @@ export async function getPublicReport(token: string): Promise<PublicReport | nul
   }
 
   try {
-    const client = publicClient();
+    const client = getSupabasePublic();
     const { data, error } = await client
       .from("v_public_reports")
       .select(REPORT_COLUMNS)
@@ -113,99 +104,6 @@ export async function getPublicReport(token: string): Promise<PublicReport | nul
   } catch (e) {
     console.error("[getPublicReport] read failed:", e);
     return null;
-  }
-}
-
-export interface PendingReport {
-  public_token: string;
-  category: ReportCategory;
-  lat: number;
-  lng: number;
-  created_at: string;
-}
-
-type PendingPinRow = {
-  public_token: string;
-  category: string;
-  lat: number;
-  lng: number;
-  created_at: string;
-};
-
-const PENDING_PIN_COLUMNS = "public_token, category, lat, lng, created_at";
-
-/**
- * Status peek for reports that are NOT yet public: freshly submitted, or
- * approved but the photo blur isn't done. Without this, the success screen's
- * "track your report" CTA lands on a 404 until moderation approves — the worst
- * possible moment to lose a first-time reporter.
- *
- * Reads v_pending_report_pins (anon-safe by design): token, category, position,
- * date — the same minimum the public map's pending pins show. No photo, no
- * description — pre-moderation content stays behind the moderation gate.
- * Rejected, hidden, test and unknown tokens are all indistinguishable (null).
- */
-export async function getPendingReportStatus(token: string): Promise<PendingReport | null> {
-  if (!supabaseConfigured() || !token) return null;
-  try {
-    const { data } = await publicClient()
-      .from("v_pending_report_pins")
-      .select(PENDING_PIN_COLUMNS)
-      .eq("public_token", token)
-      .maybeSingle<PendingPinRow>();
-
-    if (!data || !isReportCategory(data.category)) return null;
-    return {
-      public_token: data.public_token,
-      category: data.category,
-      lat: data.lat,
-      lng: data.lng,
-      created_at: data.created_at,
-    };
-  } catch (e) {
-    console.error("[getPendingReportStatus] read failed:", e);
-    return null;
-  }
-}
-
-/**
- * Pending pins for the public map: submitted / not-yet-anonymized reports shown
- * immediately as clearly-marked pending markers (product decision — a reporter
- * must see their report on the map right after submitting). PublicReport-shaped
- * with pending=true so the map can render them distinctly; no photo, no
- * authority, no votes.
- */
-export async function listPendingReportPins(limit = 300): Promise<PublicReport[]> {
-  if (!supabaseConfigured()) return [];
-  try {
-    const { data, error } = await publicClient()
-      .from("v_pending_report_pins")
-      .select(PENDING_PIN_COLUMNS)
-      .order("created_at", { ascending: false })
-      .limit(limit)
-      .returns<PendingPinRow[]>();
-
-    if (error || !data) return [];
-    return data
-      .filter((row) => isReportCategory(row.category))
-      .map((row) => ({
-        public_token: row.public_token,
-        category: row.category as ReportCategory,
-        lat: row.lat,
-        lng: row.lng,
-        status: "submitted" as const,
-        vote_count: 0,
-        confirm_count: 0,
-        created_at: row.created_at,
-        notified_at: null,
-        resolved_at: null,
-        authority_name: emptyLocaleMap(),
-        place: "",
-        pending: true,
-      }));
-  } catch (e) {
-    console.error("[listPendingReportPins] read failed:", e);
-    return [];
   }
 }
 
@@ -237,7 +135,7 @@ export interface ScorecardEntry {
 export async function getScorecard(): Promise<ScorecardEntry[]> {
   if (!supabaseConfigured()) return []; // no fake board, even in dev (anti-pattern guard)
   try {
-    const { data, error } = await publicClient()
+    const { data, error } = await getSupabasePublic()
       .from("v_authority_scorecard")
       .select("authority_id, name_i18n, notified_count, resolved_count, resolution_rate_pct")
       .order("resolution_rate_pct", { ascending: false })
@@ -271,7 +169,7 @@ export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
   }
 
   try {
-    const client = publicClient();
+    const client = getSupabasePublic();
     const { data, error } = await client
       .from("v_public_reports")
       .select(REPORT_COLUMNS)

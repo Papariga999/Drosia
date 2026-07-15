@@ -64,7 +64,9 @@ async function main(): Promise<void> {
     .from("authorities")
     .select("id, name_i18n")
     .eq("country_code", "GR")
-    .eq("level", "municipality");
+    .eq("level", "municipality")
+    .eq("is_active", true)
+    .eq("is_test", false);
   if (error) {
     console.error(`Could not read authorities: ${error.message}`);
     process.exit(1);
@@ -96,6 +98,17 @@ async function main(): Promise<void> {
   }
 
   console.log(`Boundary import complete: ${stored} polygons stored.`);
+  const { data: countryBoundarySet, error: countryBoundaryError } = await db.rpc(
+    "refresh_country_boundary_from_authorities",
+    { p_code: "GR", p_level: "municipality" } as never,
+  );
+  if (countryBoundaryError || countryBoundarySet !== true) {
+    console.error(
+      `Country geofence rebuild failed: ${countryBoundaryError?.message ?? "no usable polygons"}`,
+    );
+    process.exit(1);
+  }
+  console.log("Country geofence rebuilt from active municipality polygons.");
   if (unmatched.length) {
     console.log(`No matching authority for ${unmatched.length}: ${unmatched.join(", ")}`);
   }

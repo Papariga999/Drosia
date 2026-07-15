@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,10 @@ function normalizeSource(path: string, ref: string, host: string | null): string
 export async function POST(req: Request): Promise<Response> {
   // Light per-instance brake; never 429 a beacon — just drop silently.
   const ip = clientIp(req.headers);
-  if (!rateLimit(`track:${ip}`, 240, 10 * 60 * 1000).ok) return new NextResponse(null, { status: 204 });
+  const limit = await rateLimitDurable(`track:${ip}`, 240, 10 * 60 * 1000, {
+    failClosedInProduction: true,
+  });
+  if (!limit.ok) return new NextResponse(null, { status: 204 });
 
   const ua = req.headers.get("user-agent") ?? "";
   const device = deviceClass(ua);
@@ -67,7 +71,7 @@ export async function POST(req: Request): Promise<Response> {
 
   let body: { event?: string; path?: string; ref?: string; sid?: string; locale?: string; shareChannel?: string; durationMs?: number };
   try {
-    body = await req.json();
+    body = await readJsonBody(req, 8 * 1024);
   } catch {
     return new NextResponse(null, { status: 204 });
   }

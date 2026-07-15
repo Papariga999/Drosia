@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { listPublicReports } from "@/lib/reports";
 import { filterNearbyOpen } from "@/lib/nearby";
-import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -15,8 +15,14 @@ export const runtime = "nodejs";
  */
 export async function GET(req: Request): Promise<Response> {
   const ip = clientIp(req.headers);
-  if (!rateLimit(`nearby:${ip}`, 120, 10 * 60 * 1000).ok) {
-    return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  const limit = await rateLimitDurable(`nearby:${ip}`, 120, 10 * 60 * 1000, {
+    failClosedInProduction: true,
+  });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
   }
 
   const url = new URL(req.url);

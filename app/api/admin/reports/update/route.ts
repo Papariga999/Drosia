@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { verifySession } from "@/lib/admin/session";
+import { verifyAdminMutation } from "@/lib/admin/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { isReportCategory } from "@/lib/categories";
+import { readJsonBody } from "@/lib/http-body";
 
 export const runtime = "nodejs";
 
@@ -19,21 +20,37 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * description ≤ 500). updated_at is bumped by the trg_reports_updated_at trigger.
  */
 export async function PATCH(req: Request): Promise<Response> {
-  if (!(await verifySession())) {
+  if (!(await verifyAdminMutation(req))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: { id?: string; category?: string; description?: string | null; authority_id?: string | null };
   try {
-    body = await req.json();
+    body = await readJsonBody<typeof body>(req);
   } catch {
     return NextResponse.json({ error: "Bad request." }, { status: 400 });
   }
 
   const id = body.id ?? "";
   if (!UUID.test(id)) return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  if (body.category !== undefined && typeof body.category !== "string") {
+    return NextResponse.json({ error: "Invalid category." }, { status: 400 });
+  }
+  if (body.description !== undefined && body.description !== null && typeof body.description !== "string") {
+    return NextResponse.json({ error: "Invalid description." }, { status: 400 });
+  }
+  if (body.authority_id !== undefined && body.authority_id !== null && typeof body.authority_id !== "string") {
+    return NextResponse.json({ error: "Invalid authority id." }, { status: 400 });
+  }
 
   const admin = getSupabaseAdmin();
+  const { data: report } = await admin
+    .from("reports")
+    .select("country_code")
+    .eq("id", id)
+    .maybeSingle<{ country_code: string }>();
+  if (!report) return NextResponse.json({ error: "Report not found." }, { status: 404 });
+
   const patch: { category?: string; description?: string | null; authority_id?: string | null } = {};
 
   if (body.category !== undefined) {
@@ -62,8 +79,16 @@ export async function PATCH(req: Request): Promise<Response> {
         .from("authorities")
         .select("id")
         .eq("id", aid)
+        .eq("country_code", report.country_code)
+        .eq("is_active", true)
+        .eq("is_test", false)
         .maybeSingle<{ id: string }>();
-      if (!exists) return NextResponse.json({ error: "Authority not found." }, { status: 400 });
+      if (!exists) {
+        return NextResponse.json(
+          { error: "Authority must be active, non-test, and in the report country." },
+          { status: 400 },
+        );
+      }
       patch.authority_id = aid;
     }
   }
