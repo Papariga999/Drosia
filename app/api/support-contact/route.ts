@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { readJsonBody, RequestBodyError } from "@/lib/http-body";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 export const runtime = "nodejs";
 
@@ -57,7 +58,7 @@ function configured(): boolean {
  * log to console. Production without a key: warn (the row is still queryable).
  */
 async function notifyTeam(lead: Lead): Promise<void> {
-  const to = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "info@drosia.eu";
+  const to = CONTACT_EMAIL;
   const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
   const subject = `New Drosia supporter message: ${ROLE_LABEL[lead.role] ?? lead.role}`;
   const text = [

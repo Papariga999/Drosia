@@ -93,7 +93,7 @@ Tau, Tropfen, frisches Morgenlicht, Wasser-Ripple. Mikro-Interaktionen: **Tropfe
 
 - **Domains:** drosia.eu (primär), drosia.app, drosia.eco (thematisch). **Sofort sichern**, sobald Markencheck ok.
 - **Handles:** @drosia bzw. @drosia.eu (Instagram/X/TikTok/Facebook-Seite) — parallel sichern.
-- **E-Mail:** hello@drosia.eu, reports@drosia.eu, presse@drosia.eu. *(Wichtig: Absenderdomain sauber registrieren + SPF/DKIM/DMARC verifizieren — Deliverability-Blocker aus der Launch-Punchliste, jetzt für drosia.eu.)*
+- **Kontakt:** drosiateam@gmail.com. **System-Absender:** reports@drosia.eu. *(Wichtig: Absenderdomain sauber registrieren + SPF/DKIM/DMARC verifizieren — Deliverability-Blocker aus der Launch-Punchliste, jetzt für drosia.eu.)*
 - **Sub-Brands:** „Drosia Index" (Ranking/Report), „Drosia Spots" (Karte) optional.
 
 ---

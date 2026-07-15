@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
-
-/** Contact address for supporters/partners. Env-configurable; defaults to info@drosia.eu. */
-const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || "info@drosia.eu";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 const ROLES = ["hotel", "municipality", "ngo", "local", "other"] as const;
 type Role = (typeof ROLES)[number];
