@@ -483,20 +483,9 @@ export function ReportFlow() {
                 );
               })}
             </div>
-            <div className="relative mt-4">
-              <textarea
-                value={desc}
-                onChange={(e) => setDesc(e.target.value.slice(0, MAX_DESCRIPTION))}
-                placeholder={dict.flow.s3Placeholder}
-                className="h-[90px] w-full resize-none rounded-[14px] border-[1.5px] border-line-strong bg-surface-card p-3 text-[14px] outline-none focus:border-primary"
-              />
-              <div className="tnum absolute bottom-2.5 right-3 text-[11px] text-muted">
-                {desc.length} / {MAX_DESCRIPTION}
-              </div>
-            </div>
             <button
               onClick={() => setConsent((v) => !v)}
-              className="mt-3.5 flex w-full gap-3 rounded-2xl border-[1.5px] p-3.5 text-left transition-colors"
+              className="mt-4 flex w-full gap-3 rounded-2xl border-[1.5px] p-3.5 text-left transition-colors"
               style={{
                 background: consent ? "#EAFBF1" : "var(--surface)",
                 borderColor: consent ? "var(--success)" : "var(--border-strong)",
@@ -513,6 +502,17 @@ export function ReportFlow() {
               </span>
               <span className="text-[12px] leading-relaxed text-slate">{dict.flow.consent}</span>
             </button>
+            <div className="relative mt-3.5">
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value.slice(0, MAX_DESCRIPTION))}
+                placeholder={dict.flow.s3Placeholder}
+                className="h-[90px] w-full resize-none rounded-[14px] border-[1.5px] border-line-strong bg-surface-card p-3 text-[14px] outline-none focus:border-primary"
+              />
+              <div className="tnum absolute bottom-2.5 right-3 text-[11px] text-muted">
+                {desc.length} / {MAX_DESCRIPTION}
+              </div>
+            </div>
           </div>
         )}
 
