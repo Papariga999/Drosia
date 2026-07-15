@@ -20,8 +20,9 @@ import { normalizeUploadedImage, ImageValidationError } from "@/lib/image-upload
  *   validate → compress (sharp) → upload originals (private bucket) →
  *   intake_report RPC (country detection + authority routing ST_Contains, atomic)
  *
- * Geofencing is strict: out-of-bounds reports are rejected and uploaded blobs
- * are deleted. Anonymization is kicked off best-effort;
+ * Intake is worldwide. Active country boundaries still drive country and
+ * authority routing; unmatched reports remain private and await admin review.
+ * Anonymization is kicked off best-effort;
  * the report stays non-public until blur_status='done' (Phase 2 anonymizer).
  */
 export const runtime = "nodejs";
@@ -144,35 +145,17 @@ export async function POST(req: Request): Promise<Response> {
       p_author_token: fields.authorToken,
       p_photo_paths: uploaded,
     } as never;
-    // Geofence is always strict: a point outside every active country is rejected.
+    // Active country polygons route covered points. Worldwide points without
+    // configured coverage are accepted with country_code/authority_id = null.
+    // They follow the same anonymization and moderation gate before publication.
     const { data: rpcToken, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
 
     const token = rpcToken as string | null;
     if (rpcError) {
-      if (rpcError.message.includes("OUT_OF_BOUNDS")) {
-        await cleanupUploaded();
-        return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
-      } else {
-        await cleanupUploaded(); // atomic cleanup — never orphan blobs
-        throw new Error(rpcError.message);
-      }
+      await cleanupUploaded(); // atomic cleanup — never orphan blobs
+      throw new Error(rpcError.message);
     }
     if (!token) throw new Error("intake_report did not return a token");
-
-    // Belt-and-suspenders: enforce the geofence in code too, so it holds even on
-    // a DB whose intake_report predates the strict (OUT_OF_BOUNDS) behavior. If the
-    // point fell outside every active country, country_code is null → reject.
-    const { data: routed } = await admin
-      .from("reports")
-      .select("id, country_code")
-      .eq("public_token", token)
-      .maybeSingle<{ id: string; country_code: string | null }>();
-    if (routed && !routed.country_code) {
-      const { error: deleteError } = await admin.from("reports").delete().eq("id", routed.id);
-      if (deleteError) throw new Error(`out-of-bounds report cleanup failed: ${deleteError.message}`);
-      await cleanupUploaded();
-      return NextResponse.json({ error: "OUT_OF_BOUNDS" }, { status: 422 });
-    }
 
     // Anonymize off the hot path: after() runs once the response is flushed, so a
     // slow blur on 3 large photos can't time out the submit. The report stays

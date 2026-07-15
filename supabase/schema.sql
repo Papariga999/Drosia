@@ -48,14 +48,15 @@ alter type delivery_status add value if not exists 'delayed';
 
 -- ── Tables ──────────────────────────────────────────────────────────────────
 
--- Countries: geofence boundary + active flag. New country = new row, no code change.
+-- Countries: routing boundary + active flag. Intake/publication is worldwide;
+-- unmatched reports stay country-less and have no authority delivery.
 create table if not exists countries (
   code           text primary key,                 -- ISO-3166-1 alpha-2, e.g. 'GR'
   name_i18n      jsonb not null default '{}'::jsonb,
   boundary       geography(MultiPolygon, 4326),     -- outer geofence; null until loaded
   default_locale text not null default 'en',
   locales        text[] not null default '{}',
-  is_active      boolean not null default false,    -- only active countries accept reports
+  is_active      boolean not null default false,    -- active countries can route reports
   created_at     timestamptz not null default now()
 );
 
@@ -81,7 +82,7 @@ create table if not exists authorities (
 create table if not exists reports (
   id                   uuid primary key default gen_random_uuid(),
   public_token         text not null unique default encode(gen_random_bytes(16), 'hex'),
-  country_code         text not null references countries(code),
+  country_code         text references countries(code), -- null until worldwide intake is routed
   authority_id         uuid references authorities(id),
   category             report_category not null,
   description          text check (description is null or char_length(description) <= 500),
@@ -121,22 +122,17 @@ alter table reports add column if not exists admin_hidden boolean not null defau
 alter table reports add column if not exists reject_reason text;
 alter table reports alter column public_token set default encode(gen_random_bytes(16), 'hex');
 
--- Upgrade guards for databases created from an older schema. NOT VALID keeps
--- the migration deployable when legacy rows need cleanup, while still enforcing
--- the invariant for every new or changed row. A fresh database gets both the
--- column-level NOT NULL above and these named constraints.
+-- Worldwide intake may not match an active country yet. Those reports remain
+-- unrouted but can be published after anonymization and moderation.
+alter table reports alter column country_code drop not null;
+alter table reports drop constraint if exists reports_country_required;
+
+-- Upgrade guards for databases created from an older schema. The composite FK
+-- still guarantees that a routed authority belongs to the assigned country.
 create unique index if not exists idx_authorities_id_country
   on authorities (id, country_code);
 
 do $$ begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'reports_country_required'
-  ) then
-    alter table reports
-      add constraint reports_country_required
-      check (country_code is not null) not valid;
-  end if;
-
   if not exists (
     select 1 from pg_constraint where conname = 'reports_authority_country_fk'
   ) then
@@ -162,10 +158,6 @@ end $$;
 -- Finish validation automatically on clean databases while keeping upgrades
 -- deployable when an operator still needs to quarantine legacy rows first.
 do $$ begin
-  if not exists (select 1 from reports where country_code is null) then
-    alter table reports validate constraint reports_country_required;
-  end if;
-
   if not exists (
     select 1
     from reports r
@@ -532,10 +524,6 @@ create or replace view v_public_reports with (security_barrier = true) as
     and r.is_test = false
     and r.admin_hidden = false
     and exists (
-      select 1 from countries c
-      where c.code = r.country_code and c.is_active = true
-    )
-    and exists (
       select 1
       from report_photos ph
       where ph.report_id = r.id
@@ -557,10 +545,6 @@ create or replace view v_public_report_photos with (security_barrier = true) as
   where ph.blur_status = 'done' and ph.public_path is not null
     and r.status in ('in_review','notified','resolved') and r.is_test = false
     and r.admin_hidden = false
-    and exists (
-      select 1 from countries c
-      where c.code = r.country_code and c.is_active = true
-    )
     and not exists (
       select 1
       from report_photos pending
@@ -647,11 +631,11 @@ grant select on v_authority_scorecard   to anon, authenticated;
 grant select on v_public_authorities     to anon, authenticated;
 grant select on v_public_authority_disputes to anon, authenticated;
 
--- ── Intake RPC: geofence + authority routing + insert, atomic ───────────────
+-- ── Intake RPC: worldwide intake + country/authority routing, atomic ───────
 -- Called SERVER-SIDE ONLY (service role) from the rate-limited /api/report route,
 -- AFTER originals have been uploaded to the private bucket. One transaction:
---   • Geofence: STRICT. The point must fall inside an ACTIVE country boundary,
---     otherwise the function raises OUT_OF_BOUNDS and nothing is inserted.
+--   • Country routing: an active boundary is assigned when available; no
+--     country match leaves the report private and queued for admin review.
 --   • Authority routing: smallest covering polygon wins (most specific); no
 --     match → authority_id stays null and the report is flagged for admin review.
 -- Photos start blur_status='pending'; the report is NOT public until anonymized.
@@ -696,13 +680,6 @@ begin
     and boundary is not null
     and st_covers(boundary, v_point)
   limit 1;
-
-  -- STRICT geofence: a point outside every active country is rejected. The
-  -- caller (rate-limited /api/report) maps OUT_OF_BOUNDS to HTTP 422. There is
-  -- deliberately no relaxed fallback.
-  if v_country is null then
-    raise exception 'OUT_OF_BOUNDS' using errcode = 'P0001';
-  end if;
 
   select id into v_authority
   from authorities

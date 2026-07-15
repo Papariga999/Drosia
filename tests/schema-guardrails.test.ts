@@ -45,11 +45,11 @@ describe("schema phase 0 guardrails", () => {
     expect(schema).toMatch(/r\.is_test\s*=\s*false\s+and\s+r\.admin_hidden\s*=\s*false/i);
   });
 
-  it("only exposes reports, photos, and authorities from active countries", () => {
+  it("allows moderated worldwide reports while exposing only active authorities", () => {
     const activeCountryReportGates = schema.match(
       /select\s+1\s+from\s+countries\s+c\s+where\s+c\.code\s*=\s*r\.country_code\s+and\s+c\.is_active\s*=\s*true/gi,
     );
-    expect(activeCountryReportGates).toHaveLength(2);
+    expect(activeCountryReportGates).toBeNull();
     expect(schema).toMatch(
       /create\s+or\s+replace\s+view\s+v_public_authorities[\s\S]*?join\s+countries\s+c\s+on\s+c\.code\s*=\s*a\.country_code\s+and\s+c\.is_active\s*=\s*true/i,
     );
@@ -147,13 +147,15 @@ describe("schema RLS / least-privilege guardrails", () => {
     expect(schema).toMatch(/add column if not exists reject_reason text/i);
   });
 
-  it("rejects out-of-bounds points (strict geofence) in intake_report", () => {
-    expect(schema).toMatch(/if v_country is null then\s*raise exception 'OUT_OF_BOUNDS'/i);
+  it("accepts worldwide intake while routing only through real active coverage", () => {
+    expect(schema).not.toMatch(/raise exception 'OUT_OF_BOUNDS'/i);
+    expect(schema).toMatch(/country_code\s+text\s+references\s+countries\(code\)/i);
+    expect(schema).toMatch(/alter table reports alter column country_code drop not null/i);
     expect(schema).toMatch(/and is_test\s*=\s*false[\s\S]*?and geom is not null/i);
   });
 
   it("enforces country/authority integrity and the report state machine", () => {
-    expect(schema).toMatch(/constraint reports_country_required/i);
+    expect(schema).not.toMatch(/add constraint reports_country_required/i);
     expect(schema).toMatch(/constraint reports_authority_country_fk/i);
     expect(schema).toMatch(/create\s+or\s+replace\s+function\s+enforce_report_state_machine/i);
     expect(schema).toMatch(/old\.status\s*=\s*'notified'\s+and\s+new\.status\s+in\s*\('resolved','rejected'\)/i);

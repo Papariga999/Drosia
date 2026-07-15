@@ -70,3 +70,14 @@ describe("Next.js 16 admin gate", () => {
     expect(source).toMatch(/isSameOriginRequest/);
   });
 });
+
+describe("worldwide report approval", () => {
+  it("forces the no-email path when no authority is routed", () => {
+    const source = readFileSync(
+      join(process.cwd(), "app", "api", "admin", "reports", "approve", "route.ts"),
+      "utf8",
+    );
+    expect(source).toMatch(/select\("id, status, authority_id"\)/);
+    expect(source).toMatch(/notifyRequested\s*&&\s*report\.authority_id\s*!==\s*null/);
+  });
+});

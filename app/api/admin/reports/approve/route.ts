@@ -38,15 +38,15 @@ export async function POST(req: Request): Promise<Response> {
   if (body.notify !== undefined && typeof body.notify !== "boolean") {
     return NextResponse.json({ error: "Invalid notify value." }, { status: 400 });
   }
-  const notify = body.notify !== false; // default: send the authority email
+  const notifyRequested = body.notify !== false;
 
   const admin = getSupabaseAdmin();
 
   const { data: report, error: loadError } = await admin
     .from("reports")
-    .select("id, status")
+    .select("id, status, authority_id")
     .eq("id", id)
-    .maybeSingle<{ id: string; status: string }>();
+    .maybeSingle<{ id: string; status: string; authority_id: string | null }>();
 
   if (loadError || !report) return NextResponse.json({ error: "Report not found." }, { status: 404 });
   if (report.status !== "submitted" && report.status !== "in_review") {
@@ -55,6 +55,9 @@ export async function POST(req: Request): Promise<Response> {
       { status: 409 },
     );
   }
+  // Worldwide reports without a routed authority publish normally, but must not
+  // attempt or log an authority delivery. Delivery can happen later after routing.
+  const notify = notifyRequested && report.authority_id !== null;
 
   // Ensure anonymization is done before anything becomes public.
   try {

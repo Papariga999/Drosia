@@ -39,17 +39,15 @@ Activates Greece (placeholder geofence boundary) and the Rhodes/Kos authorities 
    | `NEXT_PUBLIC_APP_URL` | your Vercel URL (set after first deploy, then redeploy) |
    | `RESEND_API_KEY` | leave **empty** for dev-mode delivery (logs, no real email) |
    | `RESEND_WEBHOOK_SECRET` | optional: Svix signing secret for the bounce/complaint webhook (`/api/webhooks/resend`); falls back to Bearer `WEBHOOK_SECRET` |
-   | `GEOFENCE_RELAXED` | `true` **only for cross-country testing** (e.g. submitting from Germany). Leave unset for launch → reports outside an active country are rejected. |
    | `TRUST_CF_HEADER` | `true` only if actually served behind Cloudflare (otherwise the IP rate-limit key is spoofable) |
    | `ANONYMIZER_PROVIDER` | `http` to use a selective face/plate service (`ANONYMIZER_URL`, `ANONYMIZER_API_KEY`); empty = safe full-blur default |
 
 3. **Deploy.** Future `git push`es to `main` auto-deploy.
 
-> **Testing from outside Greece:** the geofence is strict by default and the app
-> enforces it in code, so a report submitted from e.g. Germany is rejected. To keep
-> testing during development, set `GEOFENCE_RELAXED=true` (Preview and/or Production
-> scope). **Remove it before launch** — no code change needed, the geofence becomes
-> strict again automatically.
+> **Worldwide intake:** reports can be submitted from any valid coordinates.
+> Active country and authority polygons route covered locations. Unmatched reports
+> use the same anonymization/moderation flow and can publish globally, but no
+> authority email is attempted until an authority is assigned.
 
 ## 4. Verify
 

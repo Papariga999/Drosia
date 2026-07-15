@@ -1213,26 +1213,27 @@ function DetailView({
                 <label className="flex items-center gap-2.5 text-[13px] font-bold text-[#3F5F64]">
                   <input
                     type="checkbox"
-                    checked={notify}
+                    checked={authority ? notify : false}
                     onChange={(e) => setNotify(e.target.checked)}
+                    disabled={!authority}
                     className="h-4 w-4 accent-[#00A6BC]"
                   />
-                  Email the responsible municipality on approval
+                  {authority ? "Email the responsible municipality on approval" : "No authority email for this worldwide report"}
                 </label>
                 <p className="mt-1.5 text-[11px] leading-relaxed text-[#9DB1B5]">
-                  {notify
-                    ? authority
-                      ? `Sends to ${report.authority_email ?? "the routed authority"} and moves the report to “notified”.`
-                      : "No authority is routed yet — assign one via “Edit details”, otherwise it holds as “awaiting authority email”."
-                    : "Publishes without sending any email (stays “in review”). You can notify later via Edit + re-approve or the Delivery monitor."}
+                  {authority && notify
+                    ? `Sends to ${report.authority_email ?? "the routed authority"} and moves the report to “notified”.`
+                    : authority
+                      ? "Publishes without sending any email (stays “in review”). You can notify later via Edit + re-approve or the Delivery monitor."
+                      : "Publishes worldwide without sending an authority email. It stays “in review” and can be routed later."}
                 </p>
                 <button
-                  onClick={() => onApprove(notify)}
+                  onClick={() => onApprove(authority ? notify : false)}
                   disabled={busy || !blurDone}
                   title={blurDone ? "" : "Awaiting anonymization"}
                   className="mt-3 w-full rounded-[11px] bg-success py-3 font-display text-[14px] font-extrabold text-white shadow-[0_6px_14px_rgba(46,204,113,0.3)] disabled:opacity-50"
                 >
-                  {busy ? "Working…" : notify ? "✓ Approve & send" : "✓ Approve (no email)"}
+                  {busy ? "Working…" : authority && notify ? "✓ Approve & send" : "✓ Approve (no email)"}
                 </button>
               </Card>
               <Card>
