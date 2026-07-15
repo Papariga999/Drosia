@@ -14,12 +14,9 @@ import { distanceKm } from "@/lib/geo";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
 
-type View = "pins" | "heat";
-
 export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   const { dict } = useLocale();
   const mapRef = useRef<LeafletMapInstance | null>(null);
-  const [view, setView] = useState<View>("pins");
   const [sheet, setSheet] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -63,27 +60,10 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
 
   return (
     <div className="relative flex h-screen flex-col overflow-hidden">
-      <div className="absolute left-1/2 top-2 z-[500] inline-flex -translate-x-1/2 rounded-xl bg-surface-card p-1 shadow-card">
-        {(["pins", "heat"] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => {
-              setView(mode);
-              setSheet(false);
-            }}
-            className={`rounded-lg px-3 py-1.5 text-[12px] font-bold ${
-              view === mode ? "bg-ink text-ink-contrast" : "text-slate"
-            }`}
-          >
-            {mode === "pins" ? dict.map.pins : dict.map.heatmap}
-          </button>
-        ))}
-      </div>
-
       <div className="relative flex-1">
         <DrosiaMap
           reports={mappedReports}
-          mode={view}
+          mode="pins"
           selectedToken={selectedToken}
           onReportSelect={openReport}
           onMapReady={(map) => {
@@ -93,7 +73,7 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
           ariaLabel={dict.bottomNav.map}
         />
 
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[450] px-4 pb-3 pt-12" style={{ background: "linear-gradient(var(--surface),transparent)" }}>
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[450] px-4 pb-3 pt-4" style={{ background: "linear-gradient(var(--surface),transparent)" }}>
           <div className="pointer-events-auto flex items-center gap-2.5 rounded-[14px] bg-surface-card px-3.5 py-3 shadow-card">
             <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary text-[0]" aria-hidden />
             <span className="flex-1 text-[14px] font-semibold text-muted">{dict.map.search}</span>
@@ -112,11 +92,6 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
               )}
             </div>
           )}
-          <div className="pointer-events-auto mt-2.5 flex gap-2 overflow-hidden">
-            <Chip active>{dict.map.near}</Chip>
-            <Chip>{dict.map.open}</Chip>
-            <Chip>{dict.map.cat}</Chip>
-          </div>
         </div>
 
         <button
@@ -300,18 +275,4 @@ function StatSeg({ value, label, color }: { value: number; label: string; color:
 
 function Dot() {
   return <span className="px-0.5 text-[11px] text-muted">·</span>;
-}
-
-function Chip({ active, children }: { active?: boolean; children: React.ReactNode }) {
-  return (
-    <span
-      className="whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-bold shadow-card"
-      style={{
-        background: active ? "var(--primary)" : "var(--surface-card)",
-        color: active ? "#fff" : "var(--slate)",
-      }}
-    >
-      {children}
-    </span>
-  );
 }
