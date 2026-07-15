@@ -404,7 +404,8 @@ export function AdminBoard() {
 
   return (
     <div lang="en" className="flex h-screen w-full bg-[#F4F8F9] font-sans text-[#0B2B30]">
-      <aside className="flex w-[228px] flex-none flex-col bg-[#0B2B30] py-4 text-white">
+      {/* Desktop sidebar — replaced by the scrollable chip nav on phones. */}
+      <aside className="hidden w-[228px] flex-none flex-col bg-[#0B2B30] py-4 text-white md:flex">
         <div className="flex items-center gap-2.5 px-5 pb-4">
           <DrosiaMark className="h-7 w-auto text-[#1ECAD9]" />
           <span className="font-display text-[18px] font-black">Drosia</span>
@@ -441,14 +442,46 @@ export function AdminBoard() {
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-[60px] flex-none items-center gap-4 border-b border-[#E3EDEE] bg-white px-6">
-          <div className="font-display text-[18px] font-black">{titles[screen]}</div>
-          <button onClick={fetchReports} className="ml-auto rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]">
+        <div className="flex h-[60px] flex-none items-center gap-3 border-b border-[#E3EDEE] bg-white px-4 md:gap-4 md:px-6">
+          <DrosiaMark className="h-6 w-auto flex-none text-[#1ECAD9] md:hidden" />
+          <div className="truncate font-display text-[16px] font-black md:text-[18px]">{titles[screen]}</div>
+          <button onClick={fetchReports} className="ml-auto flex-none rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]">
             ↻ Refresh
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-6">
+        {/* Phone nav — horizontally scrollable chips standing in for the sidebar. */}
+        <nav className="flex flex-none gap-1.5 overflow-x-auto border-b border-[#E3EDEE] bg-white px-3 py-2 md:hidden">
+          {nav.map((n) => {
+            const active = screen === n.key || (n.key === "queue" && screen === "detail");
+            return (
+              <button
+                key={n.key}
+                onClick={() => { setScreen(n.key); setSelected(null); }}
+                className="flex flex-none items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-bold"
+                style={{
+                  background: active ? "#0B2B30" : "#fff",
+                  color: active ? "#fff" : "#3F5F64",
+                  borderColor: active ? "#0B2B30" : "#E3EDEE",
+                }}
+              >
+                <span>{n.icon}</span>
+                <span className="whitespace-nowrap">{n.label}</span>
+                {n.count != null && n.count > 0 && (
+                  <span className="tnum rounded-full bg-[#E74C3C] px-1.5 py-0.5 text-[10px] font-extrabold text-white">{n.count}</span>
+                )}
+              </button>
+            );
+          })}
+          <button
+            onClick={logout}
+            className="flex flex-none items-center gap-1 rounded-full border border-[#E3EDEE] px-3 py-1.5 text-[12px] font-bold text-[#5B7378]"
+          >
+            ⎋ Logout
+          </button>
+        </nav>
+
+        <div className="flex-1 overflow-auto p-3 md:p-6">
           {screen === "queue" && (
             <ReportsBoard
               reports={reports}
@@ -520,7 +553,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
 
   return (
     <div lang="en" className="flex h-screen w-full items-center justify-center font-sans" style={{ background: "radial-gradient(120% 80% at 50% 0%,#E0F7FA,#F2FBFC)" }}>
-      <div className="w-[360px] rounded-[20px] bg-white p-8 text-center shadow-float">
+      <div className="mx-4 w-full max-w-[360px] rounded-[20px] bg-white p-8 text-center shadow-float">
         <DrosiaMark className="mx-auto mb-2.5 h-14 w-auto text-primary" />
         <div className="font-display text-[24px] font-black text-[#0B2B30]">Drosia Admin</div>
         <div className="mb-5 text-[13px] text-[#9DB1B5]">Operator sign-in</div>
@@ -679,7 +712,7 @@ function ReportsBoard({
   return (
     <div>
       {/* KPI summary — each card is a one-click status filter */}
-      <div className="mb-4 grid grid-cols-6 gap-3">
+      <div className="mb-4 grid grid-cols-3 gap-2 md:grid-cols-6 md:gap-3">
         {KPI_CARDS.map((k) => {
           const active = status === k.key;
           return (
@@ -723,13 +756,13 @@ function ReportsBoard({
 
       {/* Toolbar — search + faceted filters */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[13px] text-[#9DB1B5]">🔍</span>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search token, description, authority…"
-            className="w-[280px] rounded-[9px] border border-[#E3EDEE] bg-white py-2 pl-8 pr-3 text-[13px] outline-none focus:border-primary"
+            className="w-full rounded-[9px] border border-[#E3EDEE] bg-white py-2 pl-8 pr-3 text-[13px] outline-none focus:border-primary sm:w-[280px]"
           />
         </div>
         <FilterSelect value={category} onChange={setCategory} options={[
@@ -771,7 +804,23 @@ function ReportsBoard({
       ) : !rows.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports match the current filters.</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[#E3EDEE] bg-white">
+        <>
+        {/* Phone layout — each row as a tappable card with the same quick actions. */}
+        <div className="space-y-2.5 md:hidden">
+          {rows.map((r) => (
+            <MobileReportCard
+              key={r.id}
+              report={r}
+              busy={busy}
+              onOpen={onOpen}
+              onApprove={onApprove}
+              onReject={onReject}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto rounded-xl border border-[#E3EDEE] bg-white md:block">
           <div className="min-w-[1450px]">
           <div className="grid border-b border-[#E3EDEE] bg-[#F7FBFC]" style={{ gridTemplateColumns: cols }}>
             <Th>Photo</Th>
@@ -827,7 +876,80 @@ function ReportsBoard({
           })}
           </div>
         </div>
+        </>
       )}
+    </div>
+  );
+}
+
+/** Phone card for one report row — same open/approve/reject/edit/delete surface. */
+function MobileReportCard({
+  report,
+  busy,
+  onOpen,
+  onApprove,
+  onReject,
+  onEdit,
+  onDelete,
+}: {
+  report: AdminReportRow;
+  busy: boolean;
+  onOpen: (r: AdminReportRow) => void;
+  onApprove: (r: AdminReportRow, notify: boolean) => void;
+  onReject: (r: AdminReportRow, reason: string) => void;
+  onEdit: (
+    r: AdminReportRow,
+    patch: { category?: string; description?: string | null; authority_id?: string | null },
+  ) => Promise<boolean>;
+  onDelete: (r: AdminReportRow) => void;
+}) {
+  const r = report;
+  const age = reportAgeDays(r);
+  const ageColor = age >= 60 ? "#E74C3C" : age >= 7 ? "#E67E22" : "#1B8B4A";
+  const authority = r.authority_name?.en ?? r.authority_name?.el;
+  const ls = liveState(r);
+  const lm = LIVE_META[ls];
+  return (
+    <div
+      className="rounded-xl border border-[#E3EDEE] p-3"
+      style={{ background: lm.rowTint || "#fff", boxShadow: `inset 4px 0 0 0 ${lm.color}` }}
+    >
+      <button
+        type="button"
+        onClick={() => onOpen(r)}
+        className="flex w-full items-start gap-3 text-left"
+        aria-label={`Open report ${r.public_token.slice(0, 8)}`}
+      >
+        <AdminPhoto src={r.photo_url} className="h-14 w-14 flex-none rounded-lg" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[14px] font-bold">{catDisplay(r.category)}</span>
+            <span className="tnum ml-auto flex-none font-display text-[13px] font-extrabold" style={{ color: ageColor }}>
+              {age}d
+            </span>
+          </div>
+          <div className="truncate text-[12px]" style={{ color: authority ? "#3F5F64" : "#C0392B" }}>
+            {authority ?? "⚠ unrouted"}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <LiveBadge state={ls} />
+            <StatusBadge status={r.status} />
+            {r.admin_hidden && <span className="text-[10px] font-bold text-[#9DB1B5]">· hidden</span>}
+            <span className="tnum ml-auto text-[11px] text-[#9DB1B5]">
+              {shortDate(r.created_at)} · <span className="font-mono font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</span>
+            </span>
+          </div>
+        </div>
+      </button>
+      <ReportQuickActions
+        report={r}
+        busy={busy}
+        variant="card"
+        onApprove={(notify) => onApprove(r, notify)}
+        onReject={(reason) => onReject(r, reason)}
+        onEdit={(patch) => onEdit(r, patch)}
+        onDelete={() => onDelete(r)}
+      />
     </div>
   );
 }
@@ -844,6 +966,7 @@ function ReportQuickActions({
   onReject,
   onEdit,
   onDelete,
+  variant = "row",
 }: {
   report: AdminReportRow;
   busy: boolean;
@@ -851,6 +974,7 @@ function ReportQuickActions({
   onReject: (reason: string) => void;
   onEdit: (patch: { category?: string; description?: string | null; authority_id?: string | null }) => Promise<boolean>;
   onDelete: () => void;
+  variant?: "row" | "card";
 }) {
   const [notify, setNotify] = useState(true);
   const [reason, setReason] = useState("private_person");
@@ -859,15 +983,25 @@ function ReportQuickActions({
   const actions = reportOverviewActions(report.status);
   const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
 
+  // "card" (phone) gets wrapping rows and taller touch targets; "row" stays compact.
+  const card = variant === "card";
+  const wrap = card
+    ? "mt-2.5 flex w-full flex-wrap items-center gap-2 border-t border-[#E3EDEE] pt-2.5"
+    : "flex min-w-0 items-center gap-1.5 border-l border-[#E3EDEE] px-2 py-2";
+  const btnSize = card ? "px-3 py-2 text-[11px]" : "px-2 py-1.5 text-[10px]";
+  const approveSize = card ? "min-w-[130px] flex-1 px-3 py-2 text-[11px]" : "w-[96px] px-2 py-1.5 text-[10px]";
+  const selectSize = card ? "px-2 py-2 text-[11px]" : "px-1.5 py-1.5 text-[10px]";
+  const labelSize = card ? "text-[11px]" : "text-[10px]";
+
   return (
     <>
-      <div className="flex min-w-0 items-center gap-1.5 border-l border-[#E3EDEE] px-2 py-2">
+      <div className={wrap}>
         {actions.edit && (
           <button
             type="button"
             onClick={() => setEditing(true)}
             disabled={busy}
-            className="shrink-0 rounded-[7px] border border-[#CFE0E2] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#0B2B30] hover:border-[#00A6BC] disabled:opacity-50"
+            className={`shrink-0 rounded-[7px] border border-[#CFE0E2] bg-white ${btnSize} font-extrabold text-[#0B2B30] hover:border-[#00A6BC] disabled:opacity-50`}
           >
             ✎ Edit
           </button>
@@ -876,7 +1010,7 @@ function ReportQuickActions({
         {actions.approve && (
           <>
             <label
-              className="flex shrink-0 items-center gap-1 text-[10px] font-bold text-[#3F5F64]"
+              className={`flex shrink-0 items-center gap-1 ${labelSize} font-bold text-[#3F5F64]`}
               title="Email the responsible municipality on approval"
             >
               <input
@@ -884,7 +1018,7 @@ function ReportQuickActions({
                 checked={notify}
                 onChange={(event) => setNotify(event.target.checked)}
                 disabled={busy}
-                className="h-3.5 w-3.5 accent-[#00A6BC]"
+                className={`${card ? "h-4 w-4" : "h-3.5 w-3.5"} accent-[#00A6BC]`}
               />
               Email
             </label>
@@ -893,7 +1027,7 @@ function ReportQuickActions({
               onClick={() => onApprove(notify)}
               disabled={busy || !blurDone}
               title={blurDone ? (notify ? "Approve and email the routed authority" : "Approve without email") : "Awaiting anonymization"}
-              className="w-[96px] shrink-0 rounded-[7px] border border-[#8DDFB5] bg-[#EAFBF1] px-2 py-1.5 text-[10px] font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50"
+              className={`shrink-0 rounded-[7px] border border-[#8DDFB5] bg-[#EAFBF1] ${approveSize} font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50`}
             >
               {busy ? "Working…" : notify ? "✓ Approve & send" : "✓ Approve only"}
             </button>
@@ -908,7 +1042,7 @@ function ReportQuickActions({
               disabled={busy}
               aria-label={`Reject reason for report ${report.public_token.slice(0, 8)}`}
               title="Reject reason"
-              className="min-w-0 flex-1 rounded-[7px] border border-[#E3EDEE] bg-white px-1.5 py-1.5 text-[10px] text-[#3F5F64] disabled:opacity-50"
+              className={`min-w-0 flex-1 rounded-[7px] border border-[#E3EDEE] bg-white ${selectSize} text-[#3F5F64] disabled:opacity-50`}
             >
               <option value="private_person">Private person/property</option>
               <option value="spam_invalid">Spam / invalid</option>
@@ -918,7 +1052,7 @@ function ReportQuickActions({
               type="button"
               onClick={() => onReject(reason)}
               disabled={busy}
-              className="shrink-0 rounded-[7px] border border-[#E74C3C] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50"
+              className={`shrink-0 rounded-[7px] border border-[#E74C3C] bg-white ${btnSize} font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50`}
             >
               Reject
             </button>
@@ -926,7 +1060,7 @@ function ReportQuickActions({
         )}
 
         {!actions.approve && !actions.reject && (
-          <span className="min-w-0 flex-1 truncate px-1 text-[10px] text-[#9DB1B5]">
+          <span className={`min-w-0 flex-1 truncate px-1 ${labelSize} text-[#9DB1B5]`}>
             Approval actions completed
           </span>
         )}
@@ -936,7 +1070,7 @@ function ReportQuickActions({
             type="button"
             onClick={() => setConfirmingDelete(true)}
             disabled={busy}
-            className="shrink-0 rounded-[7px] border border-[#E74C3C] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50"
+            className={`shrink-0 rounded-[7px] border border-[#E74C3C] bg-white ${btnSize} font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50`}
           >
             🗑 Delete
           </button>
@@ -1108,7 +1242,7 @@ function DetailView({
   const isPublished = ["in_review", "notified", "resolved"].includes(report.status);
   return (
     <div>
-      <div className="mb-3.5 flex items-center gap-3">
+      <div className="mb-3.5 flex flex-wrap items-center gap-2 md:gap-3">
         <button onClick={onBack} className="text-[13px] font-bold text-[#00A6BC]">‹ Back to reports</button>
         <LiveBadge state={liveState(report)} />
         <StatusBadge status={report.status} />
@@ -1122,7 +1256,7 @@ function DetailView({
           {report.notified_at ? ` · Notified ${shortDate(report.notified_at)}` : ""}
         </span>
       </div>
-      <div className="grid gap-4" style={{ gridTemplateColumns: "1.1fr 1fr" }}>
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
           {report.photo_url ? (
             <button
