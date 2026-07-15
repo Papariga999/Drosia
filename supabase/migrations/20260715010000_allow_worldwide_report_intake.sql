@@ -1,7 +1,7 @@
 -- Worldwide report intake.
 -- Unmatched coordinates remain country/authority-null until coverage is added.
--- Publication still requires anonymization + moderation; authority delivery is
--- skipped by the application when authority_id is null.
+-- Pending metadata is public immediately; photos still require anonymization.
+-- Authority delivery is skipped by the application when authority_id is null.
 
 alter table public.reports alter column country_code drop not null;
 alter table public.reports drop constraint if exists reports_country_required;
@@ -144,10 +144,13 @@ create or replace view public.v_public_report_photos with (security_barrier = tr
     );
 
 create or replace view public.v_pending_report_pins with (security_barrier = true) as
-  select r.id, r.public_token, r.category, r.status,
-         r.vote_count, r.confirm_count,
+  -- Preserve the first five columns from the 20260702111949 production view;
+  -- PostgreSQL permits CREATE OR REPLACE VIEW to append, but not reorder, them.
+  select r.public_token, r.category,
          st_y(r.geom::geometry) as lat, st_x(r.geom::geometry) as lng,
-         r.created_at, r.notified_at, r.resolved_at
+         r.created_at,
+         r.id, r.status, r.vote_count, r.confirm_count,
+         r.notified_at, r.resolved_at
   from public.reports r
   where r.status = 'submitted'
     and r.is_test = false
