@@ -232,7 +232,10 @@ function addReportMarker(
     : report.status === "resolved"
       ? "var(--success)"
       : severityColor(days);
-  const label = String(displayedVoteCount(report));
+  // Upvote count as the pin label, but only once it means something (>= 5);
+  // low-vote pins stay a clean, numberless teardrop.
+  const votes = Number.isFinite(report.vote_count) ? report.vote_count : 0;
+  const label = votes >= MIN_PIN_VOTE_LABEL ? String(votes) : "";
   const marker = L.marker([report.lat, report.lng], {
     icon: L.divIcon({
       className: "drosia-leaflet-marker",
@@ -241,7 +244,7 @@ function addReportMarker(
       iconAnchor: [23, 50],
     }),
     keyboard: true,
-    title: label,
+    title: String(votes),
   });
 
   marker.on("click keypress", onClick);
@@ -291,9 +294,8 @@ function addHeatCircle(L: typeof import("leaflet"), map: LeafletMapInstance, rep
   return circle;
 }
 
-function displayedVoteCount(report: PublicReport): number {
-  return Math.max(1, Number.isFinite(report.vote_count) ? report.vote_count : 0);
-}
+/** Pins show their upvote count only once it carries signal. */
+const MIN_PIN_VOTE_LABEL = 5;
 
 function pinHtml(color: string, label: string, selected: boolean): string {
   return pinHtmlRaw(color, escapeHtml(label), selected);
