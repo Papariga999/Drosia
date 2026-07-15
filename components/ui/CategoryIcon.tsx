@@ -1,5 +1,5 @@
 import type { SVGProps } from "react";
-import { HelpCircle } from "lucide-react";
+import { HelpCircle, SprayCan } from "lucide-react";
 import type { ReportCategory } from "@/lib/categories";
 
 /**
@@ -167,6 +167,7 @@ const CATEGORY_ICONS: Record<ReportCategory, (props: IconProps) => React.JSX.Ele
   bulky: Sofa,
   coast: BeachWave,
   sewage: BarrelDrip,
+  vandalism: (p) => <SprayCan size={p.size ?? 18} className={p.className} aria-hidden />,
   other: (p) => <HelpCircle size={p.size ?? 18} className={p.className} aria-hidden />,
 };
 

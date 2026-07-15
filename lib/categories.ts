@@ -13,6 +13,7 @@ export const REPORT_CATEGORIES = [
   "bulky",
   "coast",
   "sewage",
+  "vandalism",
   "other",
 ] as const;
 
@@ -74,6 +75,10 @@ export const CATEGORY_META: Record<
   sewage: {
     emoji: "🛢",
     label: { el: "Λύματα / χημικά", en: "Sewage / hazard", de: "Abwasser / Gefahrstoff" },
+  },
+  vandalism: {
+    emoji: "🎨",
+    label: { el: "Βανδαλισμός", en: "Vandalism", de: "Vandalismus" },
   },
   other: {
     emoji: "❓",

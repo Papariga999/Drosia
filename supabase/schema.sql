@@ -21,7 +21,7 @@ do $$ begin
   if not exists (select 1 from pg_type where typname = 'report_category') then
     create type report_category as enum
       ('illegal_dump','construction_waste','litter','plastic','tires',
-       'appliances','vehicle','green_waste','bulky','coast','sewage','other');
+       'appliances','vehicle','green_waste','bulky','coast','sewage','vandalism','other');
   end if;
   if not exists (select 1 from pg_type where typname = 'delivery_channel') then
     create type delivery_channel as enum ('email','open311','none');
@@ -45,6 +45,7 @@ end $$;
 
 -- Additive enum evolution for existing projects.
 alter type delivery_status add value if not exists 'delayed';
+alter type report_category add value if not exists 'vandalism' before 'other';
 
 -- ── Tables ──────────────────────────────────────────────────────────────────
 
