@@ -15,7 +15,10 @@
   "footer": {
     "privacy": "Privacy",
     "imprint": "Legal notice",
-    "terms": "Terms"
+    "terms": "Terms",
+    "madeWith": "Made with",
+    "love": "love",
+    "inGreece": "in Greece."
   },
   "status": {
     "submitted": "Submitted",
@@ -191,8 +194,7 @@
     "pMuniV": "See where the problems really are, fix what matters, and let people watch you follow through.",
     "pNgo": "NGOs & community groups",
     "pNgoV": "Turn \"ugh, look at this\" into a map, real numbers and a campaign that lands.",
-    "partnerCta": "Get in touch",
-    "partnerNote": "No packages, no pitch, no pressure. Just say hi."
+    "partnerCta": "Get in touch"
   },
   "bottomNav": { "home": "Home", "map": "Map", "urgent": "Urgent", "me": "My places" },
   "support": {

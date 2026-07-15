@@ -22,6 +22,7 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ButtonLink } from "@/components/ui/Button";
 import { DrosiaMark } from "@/components/brand/Logo";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
+import { MadeWithLove } from "@/components/ui/MadeWithLove";
 import { useLocale } from "@/components/LocaleProvider";
 import { fill } from "@/lib/i18n";
 import { RANKING_THRESHOLD } from "@/lib/ranking";
@@ -275,7 +276,6 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
           >
             {dict.landing.partnerCta}
           </Link>
-          <div className="mt-2.5 text-center text-[11px] text-muted">{dict.landing.partnerNote}</div>
         </div>
       </div>
 
@@ -288,6 +288,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
           <span aria-hidden>·</span>
           <Link href="/terms" className="underline-offset-2 hover:underline">{dict.footer.terms}</Link>
         </div>
+        <MadeWithLove className="mt-2.5" />
       </footer>
     </div>
   );

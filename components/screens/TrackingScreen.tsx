@@ -8,6 +8,7 @@ import { canFollow, followReport } from "@/lib/push/client";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
 import { StatusTimeline } from "@/components/ui/StatusTimeline";
+import { MadeWithLove } from "@/components/ui/MadeWithLove";
 import { VoteBar } from "@/components/ui/VoteBar";
 import { PhotoPlaceholder } from "@/components/ui/Photo";
 import { CategoryIcon } from "@/components/ui/CategoryIcon";
@@ -439,6 +440,7 @@ export function TrackingScreen({
         <button onClick={() => setFlagOpen(true)} className="inline-flex items-center gap-1 underline">
           <Flag size={11} aria-hidden /> {dict.tracking.flag}
         </button>
+        <MadeWithLove className="mt-2.5" />
       </footer>
     </div>
     </div>

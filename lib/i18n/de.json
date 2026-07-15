@@ -15,7 +15,10 @@
   "footer": {
     "privacy": "Datenschutz",
     "imprint": "Impressum",
-    "terms": "AGB"
+    "terms": "AGB",
+    "madeWith": "Mit",
+    "love": "Liebe",
+    "inGreece": "in Griechenland gemacht."
   },
   "status": {
     "submitted": "Gemeldet",
@@ -191,8 +194,7 @@
     "pMuniV": "Sieh, wo die Probleme wirklich sind, pack die an, die zählen — und lass die Leute zusehen, wie du dranbleibst.",
     "pNgo": "NGOs & Community-Gruppen",
     "pNgoV": "Mach aus „boah, schau dir das an“ eine Karte, echte Zahlen und eine Kampagne, die sitzt.",
-    "partnerCta": "Kontaktier uns",
-    "partnerNote": "Keine Pakete, kein Pitch, kein Druck. Sag einfach Hi."
+    "partnerCta": "Kontaktier uns"
   },
   "bottomNav": { "home": "Start", "map": "Karte", "urgent": "Dringend", "me": "Meine Orte" },
   "support": {

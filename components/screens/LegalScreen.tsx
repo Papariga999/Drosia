@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useLocale } from "@/components/LocaleProvider";
 import { LangSwitch } from "@/components/ui/LangSwitch";
+import { MadeWithLove } from "@/components/ui/MadeWithLove";
 
 type Doc = "privacy" | "imprint" | "terms";
 
@@ -62,6 +63,7 @@ export function LegalScreen({ doc }: { doc: Doc }) {
             {dict.footer.terms}
           </Link>
         </nav>
+        <MadeWithLove className="mt-3 text-[11px] text-muted" />
       </div>
     </div>
   );
