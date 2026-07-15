@@ -15,14 +15,19 @@ describe("admin authentication configuration", () => {
     expect(checkPassword("wrong")).toBe(false);
   });
 
-  it("rejects weak production credentials and requires an independent session secret", () => {
+  it("accepts an existing short password but rejects placeholders and requires an independent session secret", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("ADMIN_PASSWORD", "CHANGE_ME");
+    vi.stubEnv("ADMIN_SESSION_SECRET", "independent-session-secret-at-least-thirty-two-chars");
+    expect(adminAuthConfigured()).toBe(false);
+
+    vi.stubEnv("ADMIN_PASSWORD", "hunter2");
+    expect(adminAuthConfigured()).toBe(true);
+
     vi.stubEnv("ADMIN_SESSION_SECRET", "short");
     vi.stubEnv("WEBHOOK_SECRET", "this-webhook-secret-must-not-be-an-admin-fallback");
     expect(adminAuthConfigured()).toBe(false);
 
-    vi.stubEnv("ADMIN_PASSWORD", "operator-password-longer-than-sixteen");
     vi.stubEnv("ADMIN_SESSION_SECRET", "independent-session-secret-at-least-thirty-two-chars");
     expect(adminAuthConfigured()).toBe(true);
   });

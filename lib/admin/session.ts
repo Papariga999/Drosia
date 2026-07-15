@@ -15,7 +15,7 @@ function isPlaceholder(value: string): boolean {
 function configuredPassword(): string | null {
   const password = process.env.ADMIN_PASSWORD ?? "";
   if (!password) return null;
-  if (process.env.NODE_ENV === "production" && (password.length < 16 || isPlaceholder(password))) {
+  if (process.env.NODE_ENV === "production" && isPlaceholder(password)) {
     return null;
   }
   return password;
