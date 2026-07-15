@@ -74,13 +74,9 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
         />
 
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[450] px-4 pb-3 pt-4" style={{ background: "linear-gradient(var(--surface),transparent)" }}>
-          <div className="pointer-events-auto flex items-center gap-2.5 rounded-[14px] bg-surface-card px-3.5 py-3 shadow-card">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary text-[0]" aria-hidden />
-            <span className="flex-1 text-[14px] font-semibold text-muted">{dict.map.search}</span>
-          </div>
           {/* Stats strip (1d) — the map as a destination, not just a tool. */}
           {hasReports && (
-            <div className="pointer-events-auto mt-2.5 flex items-center justify-center gap-1.5 rounded-[14px] bg-surface-card/95 px-3 py-2.5 shadow-card backdrop-blur">
+            <div className="pointer-events-auto flex items-center justify-center gap-1.5 rounded-[14px] bg-surface-card/95 px-3 py-2.5 shadow-card backdrop-blur">
               <StatSeg value={stats.reported} label={dict.map.statReported} color="var(--ink)" />
               <Dot />
               <StatSeg value={stats.fixed} label={dict.map.statFixed} color="var(--success)" />

@@ -250,7 +250,6 @@
     "errSend": "Something went wrong. Please try again, or email us directly."
   },
   "map": {
-    "search": "Search a municipality or place",
     "near": "Near me",
     "open": "Open",
     "cat": "Category",
