@@ -11,8 +11,8 @@ type Doc = "privacy" | "imprint" | "terms";
 /**
  * Shared legal page (privacy / imprint / terms). Content comes from the public
  * i18n dictionary (lib/i18n/*.json → `legal`), so the three pages stay in the
- * visitor's language. Operator identity is intentionally a placeholder — the
- * review banner flags that the text and details must be completed before launch.
+ * visitor's language. The review banner remains visible until the verified
+ * operator details replace every legal placeholder.
  */
 export function LegalScreen({ doc }: { doc: Doc }) {
   const { dict } = useLocale();
@@ -35,6 +35,10 @@ export function LegalScreen({ doc }: { doc: Doc }) {
       </div>
 
       <div className="mx-auto max-w-phone px-6 pt-4">
+        <p className="mb-3 text-[11px] font-medium text-muted">
+          {l.updated}: {l.effectiveDate}
+        </p>
+
         {l.reviewNote && (
           <p className="mb-5 rounded-xl border border-line-strong bg-tint px-3.5 py-2.5 text-[12px] leading-relaxed text-ink">
             {l.reviewNote}
