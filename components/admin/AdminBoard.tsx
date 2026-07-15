@@ -1081,6 +1081,7 @@ function DetailView({
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notify, setNotify] = useState(true);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [stats, setStats] = useState<{ views: number; priority: number; still_here: number } | null>(null);
 
   useEffect(() => {
@@ -1123,17 +1124,31 @@ function DetailView({
       </div>
       <div className="grid gap-4" style={{ gridTemplateColumns: "1.1fr 1fr" }}>
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
-          <AdminPhoto
-            src={report.photo_url}
-            className="h-[300px] rounded-[10px]"
-            badge={
-              report.photo_url ? (
-                <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">🔒 Anonymized (public)</div>
-              ) : (
-                <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">⏳ Awaiting anonymization</div>
-              )
-            }
-          />
+          {report.photo_url ? (
+            <button
+              type="button"
+              onClick={() => setPhotoOpen(true)}
+              className="group relative block w-full rounded-[10px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              aria-label="View full anonymized report image"
+            >
+              <AdminPhoto
+                src={report.photo_url}
+                className="h-[300px] rounded-[10px]"
+                badge={
+                  <>
+                    <div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">🔒 Anonymized (public)</div>
+                    <div className="absolute bottom-3 right-3 rounded-full bg-[#0B2B30]/80 px-3 py-1.5 text-[11px] font-bold text-white transition group-hover:bg-[#0B2B30]">⛶ View full image</div>
+                  </>
+                }
+              />
+            </button>
+          ) : (
+            <AdminPhoto
+              src={null}
+              className="h-[300px] rounded-[10px]"
+              badge={<div className="absolute left-3 top-3 rounded-full bg-[#0B2B30]/80 px-2.5 py-1 text-[11px] font-bold text-white">⏳ Awaiting anonymization</div>}
+            />
+          )}
           {report.photo_count > 1 && (
             <div className="mt-2 text-[11px] text-[#9DB1B5]">+ {report.photo_count - 1} more photo{report.photo_count - 1 === 1 ? "" : "s"} on this report</div>
           )}
@@ -1329,11 +1344,57 @@ function DetailView({
           onConfirm={onDelete}
         />
       )}
+      {photoOpen && report.photo_url && (
+        <PhotoLightbox src={report.photo_url} onClose={() => setPhotoOpen(false)} />
+      )}
     </div>
   );
 }
 
-/* ---------- Report edit + delete-confirm modals ---------- */
+/* ---------- Report image, edit + delete-confirm modals ---------- */
+function PhotoLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[2100] flex items-center justify-center bg-[#071D21]/95 p-5"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Full anonymized report image"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-5 top-5 z-10 flex h-10 items-center gap-2 rounded-full bg-white px-4 font-display text-[13px] font-extrabold text-[#0B2B30] shadow-float hover:bg-[#F0F7F7] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-[#071D21]"
+        aria-label="Close full image"
+        autoFocus
+      >
+        ✕ Close
+      </button>
+      {/* The modal deliberately uses contain so portrait and landscape photos are never cropped. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Anonymized report photo shown in full"
+        className="max-h-[calc(100vh-2.5rem)] max-w-[calc(100vw-2.5rem)] object-contain"
+        onClick={(event) => event.stopPropagation()}
+      />
+    </div>
+  );
+}
+
 function ReportEditModal({
   report,
   busy,
