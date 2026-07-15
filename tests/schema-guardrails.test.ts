@@ -12,6 +12,10 @@ const rlsRemediation = readFileSync(
   ),
   "utf8",
 );
+const worldwideMigration = readFileSync(
+  join(process.cwd(), "supabase", "migrations", "20260715010000_allow_worldwide_report_intake.sql"),
+  "utf8",
+);
 
 describe("schema phase 0 guardrails", () => {
   it("never uses destructive table drops", () => {
@@ -152,6 +156,8 @@ describe("schema RLS / least-privilege guardrails", () => {
     expect(schema).toMatch(/country_code\s+text\s+references\s+countries\(code\)/i);
     expect(schema).toMatch(/alter table reports alter column country_code drop not null/i);
     expect(schema).toMatch(/and is_test\s*=\s*false[\s\S]*?and geom is not null/i);
+    expect(worldwideMigration).toMatch(/alter column country_code drop not null/i);
+    expect(worldwideMigration).toMatch(/not st_covers\(c\.boundary, r\.geom\)/i);
   });
 
   it("enforces country/authority integrity and the report state machine", () => {

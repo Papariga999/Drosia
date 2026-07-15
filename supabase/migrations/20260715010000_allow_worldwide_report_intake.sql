@@ -6,6 +6,16 @@
 alter table public.reports alter column country_code drop not null;
 alter table public.reports drop constraint if exists reports_country_required;
 
+-- Normalize reports accepted by the backward-compatible application path while
+-- this migration was not yet installed. In-country unrouted reports are untouched.
+update public.reports r
+set country_code = null
+from public.countries c
+where r.country_code = c.code
+  and r.authority_id is null
+  and c.boundary is not null
+  and not st_covers(c.boundary, r.geom);
+
 create or replace function public.intake_report(
   p_lng          double precision,
   p_lat          double precision,

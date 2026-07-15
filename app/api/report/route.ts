@@ -150,10 +150,58 @@ export async function POST(req: Request): Promise<Response> {
     // They follow the same anonymization and moderation gate before publication.
     const { data: rpcToken, error: rpcError } = await admin.rpc("intake_report", rpcArgs);
 
-    const token = rpcToken as string | null;
+    let token = rpcToken as string | null;
     if (rpcError) {
-      await cleanupUploaded(); // atomic cleanup — never orphan blobs
-      throw new Error(rpcError.message);
+      if (!rpcError.message.includes("OUT_OF_BOUNDS")) {
+        await cleanupUploaded(); // atomic cleanup — never orphan blobs
+        throw new Error(rpcError.message);
+      }
+
+      // Compatibility path for a live database whose intake RPC still has the
+      // former strict geofence. Use an active country only as a temporary FK host;
+      // authority stays null, so no delivery is possible. The worldwide migration
+      // removes this need and normalizes out-of-bound host assignments to null.
+      const { data: hostCountry, error: countryError } = await admin
+        .from("countries")
+        .select("code")
+        .eq("is_active", true)
+        .order("code", { ascending: true })
+        .limit(1)
+        .maybeSingle<{ code: string }>();
+      if (countryError || !hostCountry) {
+        await cleanupUploaded();
+        throw new Error(countryError?.message ?? "No active country available for worldwide intake");
+      }
+
+      const { data: fallbackReport, error: fallbackError } = await admin
+        .from("reports")
+        .insert({
+          country_code: hostCountry.code,
+          authority_id: null,
+          category: fields.category,
+          description: fields.description || null,
+          geom: `SRID=4326;POINT(${fields.lng} ${fields.lat})`,
+          locale: fields.locale,
+          author_token: fields.authorToken || null,
+          status: "submitted",
+          excluded_from_ranking: true,
+        } as never)
+        .select("id, public_token")
+        .single<{ id: string; public_token: string }>();
+      if (fallbackError || !fallbackReport) {
+        await cleanupUploaded();
+        throw new Error(fallbackError?.message ?? "Worldwide report insert failed");
+      }
+
+      const { error: photoInsertError } = await admin.from("report_photos").insert(
+        uploaded.map((originalPath) => ({ report_id: fallbackReport.id, original_path: originalPath })) as never,
+      );
+      if (photoInsertError) {
+        await admin.from("reports").delete().eq("id", fallbackReport.id);
+        await cleanupUploaded();
+        throw new Error(`Worldwide photo insert failed: ${photoInsertError.message}`);
+      }
+      token = fallbackReport.public_token;
     }
     if (!token) throw new Error("intake_report did not return a token");
 
