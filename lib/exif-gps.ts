@@ -1,87 +1,47 @@
-/**
- * Minimal, dependency-free EXIF GPS extractor for JPEG files.
- *
- * Reads the APP1/TIFF block, finds the GPS IFD and returns decimal lat/lng.
- * It only needs GPS tags, so it parses just enough of the structure. If the
- * photo has no GPS (or isn't a JPEG), it returns null and the caller falls back
- * to live geolocation — this is best-effort progressive enhancement.
- */
+import { gps } from "exifr";
+
+/** GPS coordinates extracted from an original report photo. */
 export interface LatLng {
   lat: number;
   lng: number;
 }
 
+/**
+ * Read embedded GPS metadata before the image is compressed (compression strips
+ * EXIF). exifr handles the formats phone galleries commonly return, including
+ * JPEG and HEIC/HEIF, and does not assume the EXIF block is the first APP1 block.
+ */
 export async function readExifGps(file: File): Promise<LatLng | null> {
   try {
-    const buf = await file.arrayBuffer();
-    const view = new DataView(buf);
-    if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null; // not JPEG
+    // Supplying bytes works consistently in browsers, tests and WebViews whose
+    // File/Blob constructors do not share the same JavaScript realm.
+    const result = await gps(new Uint8Array(await file.arrayBuffer()));
+    const lat = result?.latitude;
+    const lng = result?.longitude;
 
-    let offset = 2;
-    while (offset + 4 < view.byteLength) {
-      const marker = view.getUint16(offset);
-      const size = view.getUint16(offset + 2);
-      if (marker === 0xffe1) {
-        // APP1 — check for "Exif\0\0"
-        if (view.getUint32(offset + 4) === 0x45786966) {
-          return parseTiffGps(view, offset + 10);
-        }
-        return null;
-      }
-      if ((marker & 0xff00) !== 0xff00) return null;
-      offset += 2 + size;
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return null;
     }
-    return null;
+
+    return { lat, lng };
   } catch {
+    // Photos without readable GPS metadata fall back to device GPS/manual pin.
     return null;
   }
 }
 
-function parseTiffGps(view: DataView, tiffStart: number): LatLng | null {
-  const little = view.getUint16(tiffStart) === 0x4949;
-  const u16 = (o: number) => view.getUint16(o, little);
-  const u32 = (o: number) => view.getUint32(o, little);
-
-  const ifd0 = tiffStart + u32(tiffStart + 4);
-  const entries = u16(ifd0);
-
-  let gpsIfdOffset = 0;
-  for (let i = 0; i < entries; i++) {
-    const entry = ifd0 + 2 + i * 12;
-    if (u16(entry) === 0x8825) {
-      gpsIfdOffset = tiffStart + u32(entry + 8);
-      break;
-    }
+/** Use the first selected photo that actually contains valid GPS metadata. */
+export async function readFirstExifGps(files: readonly File[]): Promise<LatLng | null> {
+  for (const file of files) {
+    const coordinates = await readExifGps(file);
+    if (coordinates) return coordinates;
   }
-  if (!gpsIfdOffset) return null;
-
-  const gpsEntries = u16(gpsIfdOffset);
-  let latRef = "N";
-  let lngRef = "E";
-  let lat: number | null = null;
-  let lng: number | null = null;
-
-  const readRational3 = (valueOffset: number): number => {
-    // Three RATIONALs (deg, min, sec); each is 8 bytes (num/den).
-    const base = tiffStart + valueOffset;
-    const deg = u32(base) / u32(base + 4);
-    const min = u32(base + 8) / u32(base + 12);
-    const sec = u32(base + 16) / u32(base + 20);
-    return deg + min / 60 + sec / 3600;
-  };
-
-  for (let i = 0; i < gpsEntries; i++) {
-    const entry = gpsIfdOffset + 2 + i * 12;
-    const tag = u16(entry);
-    const valueOffset = u32(entry + 8);
-    if (tag === 0x0001) latRef = String.fromCharCode(view.getUint8(entry + 8));
-    else if (tag === 0x0002) lat = readRational3(valueOffset);
-    else if (tag === 0x0003) lngRef = String.fromCharCode(view.getUint8(entry + 8));
-    else if (tag === 0x0004) lng = readRational3(valueOffset);
-  }
-
-  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (latRef === "S") lat = -lat;
-  if (lngRef === "W") lng = -lng;
-  return { lat, lng };
+  return null;
 }

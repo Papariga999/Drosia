@@ -29,7 +29,7 @@ import { REPORT_CATEGORIES, categoryLabel, type ReportCategory } from "@/lib/cat
 import { MAX_PHOTOS, MAX_DESCRIPTION, MAX_TOTAL_UPLOAD_BYTES } from "@/lib/report-intake";
 import { compressImage } from "@/lib/compress-image";
 import { getDeviceToken } from "@/lib/device-token";
-import { readExifGps, type LatLng } from "@/lib/exif-gps";
+import { readFirstExifGps, type LatLng } from "@/lib/exif-gps";
 import { formatDistance } from "@/lib/geo";
 import { reportAgeDays } from "@/lib/severity";
 import { trackEvent } from "@/lib/track";
@@ -141,13 +141,12 @@ export function ReportFlow() {
     const list = Array.from(picked ?? []).filter((f) => f.type.startsWith("image/"));
     if (!list.length) return;
     // EXIF GPS must come from the ORIGINAL — compression strips metadata.
-    if (!coords && list[0]) {
-      readExifGps(list[0]).then((g) => {
-        if (g) {
-          setCoords(g);
-          setLocSource("exif");
-        }
-      });
+    if (!coords) {
+      const photoCoords = await readFirstExifGps(list);
+      if (photoCoords) {
+        setCoords(photoCoords);
+        setLocSource("exif");
+      }
     }
     // Compress in the browser: Vercel caps request bodies at ~4.5 MB, so raw
     // phone photos must shrink before upload (also converts iOS HEIC → JPEG).
