@@ -15,6 +15,7 @@ import type {
   AdminTaskRow,
   DeliveryHealth,
 } from "@/lib/admin/types";
+import { reportOverviewActions } from "@/lib/admin/report-actions";
 
 function authorityName(name: Record<string, string> | null): string {
   return name?.en ?? name?.el ?? "—";
@@ -253,7 +254,10 @@ export function AdminBoard() {
     }
   }
 
-  async function updateReport(row: AdminReportRow, patch: { category?: string; description?: string | null }): Promise<boolean> {
+  async function updateReport(
+    row: AdminReportRow,
+    patch: { category?: string; description?: string | null; authority_id?: string | null },
+  ): Promise<boolean> {
     setBusy(true);
     try {
       const res = await fetch("/api/admin/reports/update", {
@@ -449,7 +453,12 @@ export function AdminBoard() {
             <ReportsBoard
               reports={reports}
               loading={loading}
+              busy={busy}
               onOpen={(r) => { setSelected(r); setScreen("detail"); }}
+              onApprove={approve}
+              onReject={reject}
+              onEdit={updateReport}
+              onDelete={deleteReport}
             />
           )}
           {screen === "detail" && selected && (
@@ -577,7 +586,28 @@ const KPI_CARDS: { key: StatusFilter; label: string; color: string }[] = [
   { key: "rejected", label: "Rejected", color: "#C0392B" },
 ];
 
-function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[]; loading: boolean; onOpen: (r: AdminReportRow) => void }) {
+function ReportsBoard({
+  reports,
+  loading,
+  busy,
+  onOpen,
+  onApprove,
+  onReject,
+  onEdit,
+  onDelete,
+}: {
+  reports: AdminReportRow[];
+  loading: boolean;
+  busy: boolean;
+  onOpen: (r: AdminReportRow) => void;
+  onApprove: (r: AdminReportRow, notify: boolean) => void;
+  onReject: (r: AdminReportRow, reason: string) => void;
+  onEdit: (
+    r: AdminReportRow,
+    patch: { category?: string; description?: string | null; authority_id?: string | null },
+  ) => Promise<boolean>;
+  onDelete: (r: AdminReportRow) => void;
+}) {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [live, setLive] = useState<"all" | LiveKey>("all");
   const [category, setCategory] = useState<string>("all");
@@ -643,7 +673,8 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
     setQuery("");
   }
 
-  const cols = "52px 84px 1.2fr 1.2fr 132px 116px 54px 84px";
+  const reportCols = "52px 84px minmax(150px, 1.2fr) minmax(170px, 1.2fr) 132px 116px 54px 84px";
+  const cols = `${reportCols} 430px`;
 
   return (
     <div>
@@ -740,7 +771,8 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
       ) : !rows.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports match the current filters.</div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-[#E3EDEE] bg-white">
+        <div className="overflow-x-auto rounded-xl border border-[#E3EDEE] bg-white">
+          <div className="min-w-[1450px]">
           <div className="grid border-b border-[#E3EDEE] bg-[#F7FBFC]" style={{ gridTemplateColumns: cols }}>
             <Th>Photo</Th>
             <Th>Token</Th>
@@ -750,6 +782,7 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
             <SortHeader label="Status" col="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <SortHeader label="Age" col="age" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
             <SortHeader label="Date" col="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+            <Th>Quick actions</Th>
           </div>
           {rows.map((r) => {
             const age = reportAgeDays(r);
@@ -758,12 +791,17 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
             const ls = liveState(r);
             const lm = LIVE_META[ls];
             return (
-              <button
+              <div
                 key={r.id}
-                onClick={() => onOpen(r)}
-                className="grid w-full items-center border-b border-[#EEF4F4] text-left hover:bg-[#F4F8F9]"
+                className="grid w-full items-stretch border-b border-[#EEF4F4] text-left"
                 style={{ gridTemplateColumns: cols, background: lm.rowTint, boxShadow: `inset 4px 0 0 0 ${lm.color}` }}
               >
+                <button
+                  onClick={() => onOpen(r)}
+                  className="grid min-w-0 items-center text-left hover:bg-[#F4F8F9]"
+                  style={{ gridTemplateColumns: reportCols, gridColumn: "1 / span 8" }}
+                  aria-label={`Open report ${r.public_token.slice(0, 8)}`}
+                >
                 <div className="py-2 pl-4 pr-3.5"><AdminPhoto src={r.photo_url} className="h-9 w-9 rounded-lg" /></div>
                 <div className="truncate px-3.5 py-2.5 font-mono text-[11px] font-bold text-[#00A6BC]">{r.public_token.slice(0, 8)}</div>
                 <div className="truncate px-3.5 py-2.5 text-[13px] font-bold">{catDisplay(r.category)}</div>
@@ -775,12 +813,156 @@ function ReportsBoard({ reports, loading, onOpen }: { reports: AdminReportRow[];
                 </div>
                 <div className="tnum px-3.5 py-2.5 font-display text-[13px] font-extrabold" style={{ color: ageColor }}>{age}d</div>
                 <div className="tnum px-3.5 py-2.5 text-[11px] text-[#5B7378]">{shortDate(r.created_at)}</div>
-              </button>
+                </button>
+                <ReportQuickActions
+                  report={r}
+                  busy={busy}
+                  onApprove={(notify) => onApprove(r, notify)}
+                  onReject={(reason) => onReject(r, reason)}
+                  onEdit={(patch) => onEdit(r, patch)}
+                  onDelete={() => onDelete(r)}
+                />
+              </div>
             );
           })}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Compact overview controls. They intentionally call the same handlers and
+ * modals as the detail screen so validation, confirmations and audit behavior
+ * remain identical regardless of where an operator starts the action.
+ */
+function ReportQuickActions({
+  report,
+  busy,
+  onApprove,
+  onReject,
+  onEdit,
+  onDelete,
+}: {
+  report: AdminReportRow;
+  busy: boolean;
+  onApprove: (notify: boolean) => void;
+  onReject: (reason: string) => void;
+  onEdit: (patch: { category?: string; description?: string | null; authority_id?: string | null }) => Promise<boolean>;
+  onDelete: () => void;
+}) {
+  const [notify, setNotify] = useState(true);
+  const [reason, setReason] = useState("private_person");
+  const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const actions = reportOverviewActions(report.status);
+  const blurDone = report.photo_count > 0 && report.blur_done_count >= report.photo_count;
+
+  return (
+    <>
+      <div className="flex min-w-0 items-center gap-1.5 border-l border-[#E3EDEE] px-2 py-2">
+        {actions.edit && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            disabled={busy}
+            className="shrink-0 rounded-[7px] border border-[#CFE0E2] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#0B2B30] hover:border-[#00A6BC] disabled:opacity-50"
+          >
+            ✎ Edit
+          </button>
+        )}
+
+        {actions.approve && (
+          <>
+            <label
+              className="flex shrink-0 items-center gap-1 text-[10px] font-bold text-[#3F5F64]"
+              title="Email the responsible municipality on approval"
+            >
+              <input
+                type="checkbox"
+                checked={notify}
+                onChange={(event) => setNotify(event.target.checked)}
+                disabled={busy}
+                className="h-3.5 w-3.5 accent-[#00A6BC]"
+              />
+              Email
+            </label>
+            <button
+              type="button"
+              onClick={() => onApprove(notify)}
+              disabled={busy || !blurDone}
+              title={blurDone ? (notify ? "Approve and email the routed authority" : "Approve without email") : "Awaiting anonymization"}
+              className="w-[96px] shrink-0 rounded-[7px] border border-[#8DDFB5] bg-[#EAFBF1] px-2 py-1.5 text-[10px] font-extrabold text-[#1B8B4A] hover:border-[#2ECC71] disabled:opacity-50"
+            >
+              {busy ? "Working…" : notify ? "✓ Approve & send" : "✓ Approve only"}
+            </button>
+          </>
+        )}
+
+        {actions.reject && (
+          <>
+            <select
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              disabled={busy}
+              aria-label={`Reject reason for report ${report.public_token.slice(0, 8)}`}
+              title="Reject reason"
+              className="min-w-0 flex-1 rounded-[7px] border border-[#E3EDEE] bg-white px-1.5 py-1.5 text-[10px] text-[#3F5F64] disabled:opacity-50"
+            >
+              <option value="private_person">Private person/property</option>
+              <option value="spam_invalid">Spam / invalid</option>
+              <option value="out_of_scope">Out of scope</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => onReject(reason)}
+              disabled={busy}
+              className="shrink-0 rounded-[7px] border border-[#E74C3C] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50"
+            >
+              Reject
+            </button>
+          </>
+        )}
+
+        {!actions.approve && !actions.reject && (
+          <span className="min-w-0 flex-1 truncate px-1 text-[10px] text-[#9DB1B5]">
+            Approval actions completed
+          </span>
+        )}
+
+        {actions.delete && (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={busy}
+            className="shrink-0 rounded-[7px] border border-[#E74C3C] bg-white px-2 py-1.5 text-[10px] font-extrabold text-[#C0392B] hover:bg-[#FDECEA] disabled:opacity-50"
+          >
+            🗑 Delete
+          </button>
+        )}
+      </div>
+
+      {editing && (
+        <ReportEditModal
+          report={report}
+          busy={busy}
+          onClose={() => setEditing(false)}
+          onSave={async (patch) => {
+            const ok = await onEdit(patch);
+            if (ok) setEditing(false);
+          }}
+        />
+      )}
+      {confirmingDelete && (
+        <DeleteConfirm
+          token={report.public_token}
+          busy={busy}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+    </>
   );
 }
 
