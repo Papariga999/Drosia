@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@/lib/i18n": ["./lib/i18n/index.ts"],
+      "@/*": ["./*"],
+      "next/link": ["./.design-sync/stubs/next-link.tsx"],
+      "next/navigation": ["./.design-sync/stubs/next-navigation.ts"]
+    }
+  }
+}

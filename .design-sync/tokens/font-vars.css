@@ -1,0 +1,6 @@
+/* Font-family tokens — injected by next/font on <html> in the app; defined
+ * statically here for the design bundle (families ship via fonts/). */
+:root {
+  --font-display: Nunito;
+  --font-sans: Mulish;
+}
