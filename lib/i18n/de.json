@@ -272,7 +272,9 @@
     "nationwide": "Landesweit",
     "stOpen": "Offen",
     "stForwarded": "Weitergeleitet",
-    "stResolved": "Behoben"
+    "stResolved": "Behoben",
+    "locating": "Standort wird ermittelt…",
+    "locationDenied": "Erlaube den Standortzugriff, um Meldungen in deiner Nähe zu sehen."
   },
   "scorecard": {
     "level": "Gemeinde",

@@ -272,7 +272,9 @@
     "nationwide": "Nationwide",
     "stOpen": "Open",
     "stForwarded": "Forwarded",
-    "stResolved": "Resolved"
+    "stResolved": "Resolved",
+    "locating": "Finding your location…",
+    "locationDenied": "Allow location access to see reports near you."
   },
   "scorecard": {
     "level": "Municipality",

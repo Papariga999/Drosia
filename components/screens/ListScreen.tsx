@@ -2,25 +2,55 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Clock, Flame, Landmark, Leaf, ThumbsUp } from "lucide-react";
+import { ArrowUpRight, Clock, Flame, Landmark, Leaf, MapPinOff, ThumbsUp } from "lucide-react";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { CategoryIcon } from "@/components/ui/CategoryIcon";
 import { useLocale } from "@/components/LocaleProvider";
 import { categoryLabel } from "@/lib/categories";
+import { distanceKm } from "@/lib/geo";
 import { reportAgeDays, severityColor } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
 
 type Tab = "near" | "region" | "nationwide";
 
+/** Proximity radius per tab (km); nationwide is unfiltered. */
+const TAB_RADIUS_KM: Record<Exclude<Tab, "nationwide">, number> = { near: 5, region: 50 };
+
 /** Most-urgent list (Screen 5) — ranked by votes, then age. The
  * screenreader-friendly list view of the map. Data: v_public_reports. */
 export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
   const { locale, dict } = useLocale();
-  const [tab, setTab] = useState<Tab>("near");
+  // Nationwide first: content with no permission prompt; near/region ask on tap.
+  const [tab, setTab] = useState<Tab>("nationwide");
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [geo, setGeo] = useState<"idle" | "loading" | "denied">("idle");
+
+  function selectTab(tk: Tab) {
+    setTab(tk);
+    if (tk === "nationwide" || pos || geo === "loading") return;
+    if (!navigator.geolocation) {
+      setGeo("denied");
+      return;
+    }
+    setGeo("loading");
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setPos({ lat: coords.latitude, lng: coords.longitude });
+        setGeo("idle");
+      },
+      () => setGeo("denied"),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  }
 
   const ranked = [...reports].sort(
     (a, b) => b.vote_count - a.vote_count || reportAgeDays(b) - reportAgeDays(a),
   );
+  const visible =
+    tab === "nationwide" || !pos
+      ? ranked
+      : ranked.filter((r) => distanceKm(pos.lat, pos.lng, r.lat, r.lng) <= TAB_RADIUS_KM[tab]);
+  const awaitingLocation = tab !== "nationwide" && !pos;
 
   function badgeFor(status: PublicReport["status"]) {
     if (status === "resolved") return { bg: "#EAFBF1", fg: "#1B8B4A", label: dict.list.stResolved };
@@ -40,7 +70,7 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
           {(["near", "region", "nationwide"] as const).map((tk) => (
             <button
               key={tk}
-              onClick={() => setTab(tk)}
+              onClick={() => selectTab(tk)}
               className="border-b-[3px] pb-2.5 font-display text-[14px] font-extrabold"
               style={{
                 color: tab === tk ? "var(--primary-ink)" : "var(--muted)",
@@ -53,14 +83,21 @@ export function ListScreen({ reports = [] }: { reports?: PublicReport[] }) {
         </div>
       </div>
 
-      {ranked.length === 0 ? (
+      {awaitingLocation ? (
+        <div className="flex flex-1 flex-col items-center justify-center bg-surface px-8 text-center">
+          <MapPinOff size={40} className={geo === "denied" ? "text-muted" : "animate-pulse text-primary-ink"} aria-hidden />
+          <p className="mt-2 text-[14px] font-bold text-slate">
+            {geo === "denied" ? dict.list.locationDenied : dict.list.locating}
+          </p>
+        </div>
+      ) : visible.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center bg-surface px-8 text-center">
           <Leaf size={40} className="text-success" aria-hidden />
           <p className="mt-2 text-[14px] font-bold text-slate">{dict.map.emptyTitle}</p>
         </div>
       ) : (
         <ul className="flex-1 overflow-auto bg-surface px-4 py-3.5">
-          {ranked.map((r, i) => {
+          {visible.map((r, i) => {
             const rankColor = i === 0 ? "var(--sev-stale)" : i < 3 ? "var(--sev-warn)" : "var(--muted)";
             const days = reportAgeDays(r);
             const b = badgeFor(r.status);
