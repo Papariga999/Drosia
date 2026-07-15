@@ -5,8 +5,8 @@ import { getPublicReport, listNearbyReports } from "@/lib/reports";
 /**
  * Report detail / Tracking — /r/<token>. The most-shared entry point.
  * Reads the published report through v_public_reports (anonymized, no PII).
- * Submitted, rejected, hidden, and unknown tokens all yield the friendly 404;
- * pre-moderation existence and location are never exposed publicly.
+ * Submitted reports are exposed as privacy-safe pending records: no description,
+ * and the photo appears only after anonymization. Rejected/hidden tokens stay private.
  * Dev (no Supabase) falls back to the design mock: /r/demo-open · demo-resolved.
  */
 export default async function TrackingPage({

@@ -206,9 +206,9 @@ export async function POST(req: Request): Promise<Response> {
     if (!token) throw new Error("intake_report did not return a token");
 
     // Anonymize off the hot path: after() runs once the response is flushed, so a
-    // slow blur on 3 large photos can't time out the submit. The report stays
-    // non-public until every photo is blur_status='done' AND approved in
-    // moderation; approval also re-runs anonymization, so this is a head start.
+    // slow blur on 3 large photos can't time out the submit. Safe metadata is
+    // public as pending immediately; photos stay private until every photo is
+    // blur_status='done'. Approval also re-runs anonymization if needed.
     const reportToken = token;
     after(async () => {
       try {

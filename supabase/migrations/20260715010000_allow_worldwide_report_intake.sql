@@ -143,7 +143,34 @@ create or replace view public.v_public_report_photos with (security_barrier = tr
         and (pending.blur_status <> 'done' or pending.public_path is null)
     );
 
-revoke all on public.v_public_reports, public.v_public_report_photos
+create or replace view public.v_pending_report_pins with (security_barrier = true) as
+  select r.id, r.public_token, r.category, r.status,
+         r.vote_count, r.confirm_count,
+         st_y(r.geom::geometry) as lat, st_x(r.geom::geometry) as lng,
+         r.created_at, r.notified_at, r.resolved_at
+  from public.reports r
+  where r.status = 'submitted'
+    and r.is_test = false
+    and r.admin_hidden = false;
+
+create or replace view public.v_pending_report_photos with (security_barrier = true) as
+  select ph.report_id, ph.public_path
+  from public.report_photos ph
+  join public.reports r on r.id = ph.report_id
+  where r.status = 'submitted'
+    and r.is_test = false
+    and r.admin_hidden = false
+    and ph.blur_status = 'done'
+    and ph.public_path is not null
+    and not exists (
+      select 1 from public.report_photos pending
+      where pending.report_id = r.id
+        and (pending.blur_status <> 'done' or pending.public_path is null)
+    );
+
+revoke all on public.v_public_reports, public.v_public_report_photos,
+  public.v_pending_report_pins, public.v_pending_report_photos
   from public, anon, authenticated;
-grant select on public.v_public_reports, public.v_public_report_photos
+grant select on public.v_public_reports, public.v_public_report_photos,
+  public.v_pending_report_pins, public.v_pending_report_photos
   to anon, authenticated;

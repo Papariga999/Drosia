@@ -84,25 +84,30 @@ export async function POST(req: Request): Promise<Response> {
     if (!authority) return NextResponse.json({ error: "Authority not found." }, { status: 400 });
   }
 
-  // Resolve and authorize a requested follow before claiming success. Private
-  // reports may only be followed by their submitting device; everyone may
-  // follow a report already present in the privacy-safe public view.
+  // Resolve and authorize a requested follow before claiming success. Visible
+  // pending reports can be followed immediately, as can published reports.
   let followReportId: string | null = null;
   if (reportToken) {
     const { data: report, error: reportError } = await admin
       .from("reports")
-      .select("id, author_token, status, is_test")
+      .select("id, author_token, status, is_test, admin_hidden")
       .eq("public_token", reportToken)
       .maybeSingle<{
         id: string;
         author_token: string | null;
         status: string;
         is_test: boolean;
+        admin_hidden: boolean;
       }>();
     if (reportError) return NextResponse.json({ error: "Follow failed." }, { status: 500 });
 
     const ownsPrivateReport =
-      report?.author_token === deviceToken && report.status !== "rejected" && !report.is_test;
+      report?.author_token === deviceToken &&
+      report.status !== "rejected" &&
+      !report.is_test &&
+      !report.admin_hidden;
+    const isVisiblePending =
+      report?.status === "submitted" && !report.is_test && !report.admin_hidden;
     let isPublished = false;
     if (report && !ownsPrivateReport) {
       const { data: published, error: publishedError } = await admin
@@ -113,7 +118,7 @@ export async function POST(req: Request): Promise<Response> {
       if (publishedError) return NextResponse.json({ error: "Follow failed." }, { status: 500 });
       isPublished = !!published;
     }
-    if (!report || (!ownsPrivateReport && !isPublished)) {
+    if (!report || (!ownsPrivateReport && !isVisiblePending && !isPublished)) {
       return NextResponse.json({ error: "Report not found." }, { status: 404 });
     }
     followReportId = report.id;

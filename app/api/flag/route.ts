@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/flag — DSA notice-and-takedown. Public, login-free: anyone can flag
- * a published report. Writes content_flags(status='open') for the admin queue.
+ * a visible pending or published report. Writes content_flags(status='open')
+ * for the admin queue.
  * Rate-limited + honeypot. Never reveals whether a token exists beyond a generic
  * response.
  */
@@ -55,7 +56,7 @@ export async function POST(req: Request): Promise<Response> {
   const contact = parsed.data.contact || null;
 
   const admin = getSupabaseAdmin();
-  const { data: report, error: lookupError } = await admin
+  const { data: published, error: lookupError } = await admin
     .from("v_public_reports")
     .select("id")
     .eq("public_token", token)
@@ -63,6 +64,23 @@ export async function POST(req: Request): Promise<Response> {
   if (lookupError) {
     console.error("[/api/flag] report lookup failed:", lookupError.message);
     return NextResponse.json({ error: "Could not submit notice." }, { status: 503 });
+  }
+
+  let report = published;
+  if (!report) {
+    const { data: pending, error: pendingError } = await admin
+      .from("reports")
+      .select("id")
+      .eq("public_token", token)
+      .eq("status", "submitted")
+      .eq("is_test", false)
+      .eq("admin_hidden", false)
+      .maybeSingle<{ id: string }>();
+    if (pendingError) {
+      console.error("[/api/flag] pending report lookup failed:", pendingError.message);
+      return NextResponse.json({ error: "Could not submit notice." }, { status: 503 });
+    }
+    report = pending;
   }
 
   // Generic response either way (don't reveal token existence).

@@ -22,7 +22,7 @@ export type PublicReport = {
   place: string;
   /** Anonymized public photo URL (report-public bucket); undefined in mock/demo. */
   photo_url?: string;
-  /** Not yet approved/anonymized: shown as a pending pin only (no photo, no details). */
+  /** Awaiting moderation; may include an already-anonymized public photo. */
   pending?: boolean;
 };
 

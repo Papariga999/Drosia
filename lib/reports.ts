@@ -6,12 +6,14 @@ import { distanceKm } from "./geo";
 import type { NearbyReport, PublicReport } from "./mock";
 import { MOCK_REPORTS } from "./mock";
 import { getSupabasePublic, publicSupabaseConfigured } from "./supabase/public";
+import { getSupabaseAdmin } from "./supabase/admin";
+import { parseReportPoint } from "./report-point";
 
 /**
- * Server-side public reads. ALWAYS go through the SQL views
- * (v_public_reports / v_public_report_photos), never the base tables —
- * the views already strip author_token, is_test and originals, and only expose
- * reports whose photo is anonymized (blur_status='done').
+ * Server-side public reads. Published reports use privacy-safe SQL views.
+ * Pending reports use the pending views, with a narrow service-role fallback
+ * for databases awaiting the additive migration. Original paths, descriptions,
+ * and author tokens are never selected on the pending path.
  *
  * Dev fallback: when Supabase isn't configured (no real URL) and we're NOT in
  * production, return the design mock so the prototype still renders. In
@@ -27,6 +29,8 @@ function isProd(): boolean {
 
 const REPORT_COLUMNS =
   "id, public_token, category, lat, lng, status, vote_count, confirm_count, created_at, notified_at, resolved_at, authority_name, authority_level";
+const PENDING_COLUMNS =
+  "id, public_token, category, lat, lng, status, vote_count, confirm_count, created_at, notified_at, resolved_at";
 
 type ViewRow = {
   id: string;
@@ -42,6 +46,14 @@ type ViewRow = {
   resolved_at: string | null;
   authority_name: Record<string, string> | null;
   authority_level: string | null;
+};
+
+type PendingRow = Omit<ViewRow, "authority_name" | "authority_level">;
+
+type PendingPhotoRow = {
+  report_id: string;
+  public_path: string | null;
+  blur_status: string;
 };
 
 function emptyLocaleMap(): Record<Locale, string> {
@@ -74,6 +86,118 @@ function mapRow(row: ViewRow): PublicReport | null {
   };
 }
 
+function mapPendingRow(row: PendingRow): PublicReport | null {
+  if (!isReportCategory(row.category) || row.status !== "submitted") return null;
+  return {
+    public_token: row.public_token,
+    category: row.category,
+    lat: row.lat,
+    lng: row.lng,
+    status: "submitted",
+    vote_count: row.vote_count ?? 0,
+    confirm_count: row.confirm_count ?? 0,
+    created_at: row.created_at,
+    notified_at: null,
+    resolved_at: null,
+    authority_name: emptyLocaleMap(),
+    place: "",
+    pending: true,
+  };
+}
+
+/**
+ * Read privacy-safe pending pins. The service-role fallback keeps this release
+ * compatible with live databases where the new public view migration has not
+ * been applied yet; it selects only the same safe fields and never any photo.
+ */
+async function listPendingReports(limit: number, token?: string): Promise<PublicReport[]> {
+  const publicClient = getSupabasePublic();
+  let viewQuery = publicClient.from("v_pending_report_pins").select(PENDING_COLUMNS);
+  if (token) viewQuery = viewQuery.eq("public_token", token);
+  const { data: viewData, error: viewError } = await viewQuery
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<PendingRow[]>();
+  if (!viewError) return mapPendingReportsWithPhotos(viewData ?? []);
+
+  const admin = getSupabaseAdmin();
+  let baseQuery = admin
+    .from("reports")
+    .select("id, public_token, category, status, vote_count, confirm_count, created_at, notified_at, resolved_at, geom")
+    .eq("status", "submitted")
+    .eq("is_test", false)
+    .eq("admin_hidden", false);
+  if (token) baseQuery = baseQuery.eq("public_token", token);
+  const { data: baseData, error: baseError } = await baseQuery
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<Array<{
+      id: string;
+      public_token: string;
+      category: string;
+      status: string;
+      vote_count: number;
+      confirm_count: number;
+      created_at: string;
+      notified_at: null;
+      resolved_at: null;
+      geom: unknown;
+    }>>();
+  if (baseError) throw new Error(baseError.message);
+  const rows = (baseData ?? [])
+    .map((row): PendingRow | null => {
+      const point = parseReportPoint(row.geom);
+      if (!point) return null;
+      return { ...row, ...point };
+    })
+    .filter((row): row is PendingRow => row !== null);
+  return mapPendingReportsWithPhotos(rows);
+}
+
+/** Only expose pending photos after every image has an anonymized public copy. */
+async function mapPendingReportsWithPhotos(rows: PendingRow[]): Promise<PublicReport[]> {
+  if (!rows.length) return [];
+
+  const reports = rows
+    .map((row) => ({ row, report: mapPendingRow(row) }))
+    .filter(
+      (entry): entry is { row: PendingRow; report: PublicReport } => entry.report !== null,
+    );
+  if (!reports.length) return [];
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("report_photos")
+    .select("report_id, public_path, blur_status")
+    .in(
+      "report_id",
+      reports.map(({ row }) => row.id),
+    )
+    .returns<PendingPhotoRow[]>();
+
+  if (error) {
+    console.error("[listPendingReports] pending photo read failed:", error.message);
+    return reports.map(({ report }) => report);
+  }
+
+  const photosByReport = new Map<string, PendingPhotoRow[]>();
+  for (const photo of data ?? []) {
+    const photos = photosByReport.get(photo.report_id) ?? [];
+    photos.push(photo);
+    photosByReport.set(photo.report_id, photos);
+  }
+
+  return reports.map(({ row, report }) => {
+    const photos = photosByReport.get(row.id) ?? [];
+    const safeToShow =
+      photos.length > 0 &&
+      photos.every((photo) => photo.blur_status === "done" && !!photo.public_path);
+    if (safeToShow && photos[0]?.public_path) {
+      report.photo_url = anonymizedPhotoUrl(photos[0].public_path);
+    }
+    return report;
+  });
+}
+
 export async function getPublicReport(token: string): Promise<PublicReport | null> {
   if (!supabaseConfigured()) {
     if (isProd()) return null;
@@ -88,19 +212,21 @@ export async function getPublicReport(token: string): Promise<PublicReport | nul
       .eq("public_token", token)
       .maybeSingle<ViewRow>();
 
-    if (error || !data) return null;
-    const report = mapRow(data);
-    if (!report) return null;
+    if (!error && data) {
+      const report = mapRow(data);
+      if (!report) return null;
 
-    const { data: photo } = await client
-      .from("v_public_report_photos")
-      .select("public_path")
-      .eq("report_id", data.id)
-      .limit(1)
-      .maybeSingle<{ public_path: string }>();
-    if (photo?.public_path) report.photo_url = anonymizedPhotoUrl(photo.public_path);
+      const { data: photo } = await client
+        .from("v_public_report_photos")
+        .select("public_path")
+        .eq("report_id", data.id)
+        .limit(1)
+        .maybeSingle<{ public_path: string }>();
+      if (photo?.public_path) report.photo_url = anonymizedPhotoUrl(photo.public_path);
 
-    return report;
+      return report;
+    }
+    return (await listPendingReports(1, token))[0] ?? null;
   } catch (e) {
     console.error("[getPublicReport] read failed:", e);
     return null;
@@ -170,14 +296,17 @@ export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
 
   try {
     const client = getSupabasePublic();
-    const { data, error } = await client
+    const [{ data, error }, pending] = await Promise.all([
+      client
       .from("v_public_reports")
       .select(REPORT_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(limit)
-      .returns<ViewRow[]>();
+      .returns<ViewRow[]>(),
+      listPendingReports(limit),
+    ]);
 
-    if (error || !data) return [];
+    if (error || !data) return pending;
 
     const ids = data.map((r) => r.id);
     const photoByReport = new Map<string, string>();
@@ -192,7 +321,7 @@ export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
       }
     }
 
-    return data
+    const published = data
       .map((row) => {
         const report = mapRow(row);
         if (report) {
@@ -202,6 +331,9 @@ export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
         return report;
       })
       .filter((r): r is PublicReport => r !== null);
+    return [...pending, ...published]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit);
   } catch (e) {
     console.error("[listPublicReports] read failed:", e);
     return [];

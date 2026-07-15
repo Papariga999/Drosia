@@ -11,7 +11,8 @@ export const runtime = "nodejs";
  * POST /api/vote — anonymous engagement (Phase 3). One 👍 'priority' or 🔴
  * 'still_here' per device per report, deduped by the (report_id, voter_token,
  * type) UNIQUE constraint. Login-free: voter_token is the client device token
- * (NOT PII). Rate-limited per IP; honeypot. Only published reports are votable.
+ * (NOT PII). Rate-limited per IP; honeypot. Public pending and published
+ * reports are votable.
  * Counts are denormalized by a DB trigger, so we read them back fresh.
  */
 const bodySchema = z.object({
@@ -65,11 +66,23 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const admin = getSupabaseAdmin();
-  const { data: report } = await admin
+  const { data: published } = await admin
     .from("v_public_reports")
     .select("id, status, vote_count, confirm_count")
     .eq("public_token", token)
     .maybeSingle<{ id: string; status: string; vote_count: number; confirm_count: number }>();
+  let report = published;
+  if (!report) {
+    const { data: pending } = await admin
+      .from("reports")
+      .select("id, status, vote_count, confirm_count")
+      .eq("public_token", token)
+      .eq("status", "submitted")
+      .eq("is_test", false)
+      .eq("admin_hidden", false)
+      .maybeSingle<{ id: string; status: string; vote_count: number; confirm_count: number }>();
+    report = pending;
+  }
   if (!report) {
     return NextResponse.json({ error: "Not found." }, { status: 404 });
   }

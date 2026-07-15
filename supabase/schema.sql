@@ -552,14 +552,34 @@ create or replace view v_public_report_photos with (security_barrier = true) as
         and (pending.blur_status <> 'done' or pending.public_path is null)
     );
 
--- Submitted reports are private by contract. The compatibility view stays
--- empty and ungranted so re-running this schema closes the legacy exposure.
+-- Submitted reports appear immediately as privacy-safe pending pins. Never expose
+-- description, authority, author token, or any photo through this view.
 create or replace view v_pending_report_pins with (security_barrier = true) as
-  select r.public_token, r.category,
+  select r.id, r.public_token, r.category, r.status,
+         r.vote_count, r.confirm_count,
          st_y(r.geom::geometry) as lat, st_x(r.geom::geometry) as lng,
-         r.created_at
+         r.created_at, r.notified_at, r.resolved_at
   from reports r
-  where false;
+  where r.status = 'submitted'
+    and r.is_test = false
+    and r.admin_hidden = false;
+
+-- Pending photos become visible only after every photo on the report has a safe
+-- anonymized public variant. Original paths are never selected.
+create or replace view v_pending_report_photos with (security_barrier = true) as
+  select ph.report_id, ph.public_path
+  from report_photos ph
+  join reports r on r.id = ph.report_id
+  where r.status = 'submitted'
+    and r.is_test = false
+    and r.admin_hidden = false
+    and ph.blur_status = 'done'
+    and ph.public_path is not null
+    and not exists (
+      select 1 from report_photos pending
+      where pending.report_id = r.id
+        and (pending.blur_status <> 'done' or pending.public_path is null)
+    );
 
 -- Authority accountability scorecard — FAIRNESS ENFORCED:
 --   • only delivered ('notified'+'resolved') count, • >= 10, • no test, • no excluded.
@@ -622,7 +642,8 @@ create or replace view v_public_authority_disputes with (security_barrier = true
     );
 
 revoke all on v_public_reports, v_public_report_photos, v_authority_scorecard,
-  v_public_authorities, v_public_authority_disputes, v_pending_report_pins
+  v_public_authorities, v_public_authority_disputes, v_pending_report_pins,
+  v_pending_report_photos
   from public, anon, authenticated;
 
 grant select on v_public_reports        to anon, authenticated;
@@ -630,6 +651,8 @@ grant select on v_public_report_photos  to anon, authenticated;
 grant select on v_authority_scorecard   to anon, authenticated;
 grant select on v_public_authorities     to anon, authenticated;
 grant select on v_public_authority_disputes to anon, authenticated;
+grant select on v_pending_report_pins    to anon, authenticated;
+grant select on v_pending_report_photos  to anon, authenticated;
 
 -- ── Intake RPC: worldwide intake + country/authority routing, atomic ───────
 -- Called SERVER-SIDE ONLY (service role) from the rate-limited /api/report route,
@@ -638,7 +661,8 @@ grant select on v_public_authority_disputes to anon, authenticated;
 --     country match leaves the report private and queued for admin review.
 --   • Authority routing: smallest covering polygon wins (most specific); no
 --     match → authority_id stays null and the report is flagged for admin review.
--- Photos start blur_status='pending'; the report is NOT public until anonymized.
+-- Photos start blur_status='pending'; safe report metadata is immediately public
+-- as pending, while the photo remains private until anonymization completes.
 create or replace function intake_report(
   p_lng          double precision,
   p_lat          double precision,

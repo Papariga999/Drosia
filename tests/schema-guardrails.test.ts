@@ -36,11 +36,19 @@ describe("schema phase 0 guardrails", () => {
     );
   });
 
-  it("never exposes submitted reports or pending pins", () => {
+  it("exposes only privacy-safe pending pins and anonymized pending photos", () => {
     expect(schema).toMatch(
-      /create\s+or\s+replace\s+view\s+v_pending_report_pins[\s\S]*?where\s+false\s*;/i,
+      /create\s+or\s+replace\s+view\s+v_pending_report_pins[\s\S]*?r\.status\s*=\s*'submitted'[\s\S]*?r\.is_test\s*=\s*false[\s\S]*?r\.admin_hidden\s*=\s*false/i,
     );
-    expect(schema).not.toMatch(/grant\s+select\s+on\s+v_pending_report_pins/i);
+    const pendingPins = schema.match(
+      /create\s+or\s+replace\s+view\s+v_pending_report_pins[\s\S]*?where[\s\S]*?r\.admin_hidden\s*=\s*false\s*;/i,
+    )?.[0] ?? "";
+    expect(pendingPins).not.toMatch(/description|author_token|original_path|public_path/i);
+    expect(schema).toMatch(/grant\s+select\s+on\s+v_pending_report_pins\s+to\s+anon,\s*authenticated/i);
+    expect(schema).toMatch(
+      /create\s+or\s+replace\s+view\s+v_pending_report_photos[\s\S]*?ph\.blur_status\s*=\s*'done'[\s\S]*?ph\.public_path\s+is\s+not\s+null[\s\S]*?not\s+exists/i,
+    );
+    expect(schema).toMatch(/grant\s+select\s+on\s+v_pending_report_photos\s+to\s+anon,\s*authenticated/i);
   });
 
   it("hides admin-unpublished (admin_hidden) reports from the public view", () => {
@@ -231,13 +239,26 @@ describe("public data-access guardrails", () => {
     expect(source).not.toMatch(/\.from\(\s*"authorities"\s*\)/);
   });
 
-  it("gates votes and DSA flags through the publish-safe report view", () => {
+  it("gates votes and DSA flags through published or visible-pending checks", () => {
     for (const route of [
       join(process.cwd(), "app", "api", "vote", "route.ts"),
       join(process.cwd(), "app", "api", "flag", "route.ts"),
     ]) {
-      expect(readFileSync(route, "utf8")).toMatch(/\.from\(\s*"v_public_reports"\s*\)/);
+      const source = readFileSync(route, "utf8");
+      expect(source).toMatch(/\.from\(\s*"v_public_reports"\s*\)/);
+      expect(source).toMatch(/\.eq\(\s*"status",\s*"submitted"\s*\)/);
+      expect(source).toMatch(/\.eq\(\s*"is_test",\s*false\s*\)/);
+      expect(source).toMatch(/\.eq\(\s*"admin_hidden",\s*false\s*\)/);
     }
+  });
+
+  it("never reads an original image in the pending-photo endpoint", () => {
+    const source = readFileSync(
+      join(process.cwd(), "app", "api", "reports", "pending-photo", "route.ts"),
+      "utf8",
+    );
+    expect(source).not.toMatch(/original_path/);
+    expect(source).toMatch(/getPublicReport/);
   });
 
   it("keeps development authority fixtures marked as test data", () => {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bell, Check, CheckCircle2, Flag, Landmark, Lock, Share2 } from "lucide-react";
+import { Bell, Check, CheckCircle2, Flag, Hourglass, Landmark, Lock, Share2 } from "lucide-react";
 import { canFollow, followReport } from "@/lib/push/client";
 import { AppBar } from "@/components/ui/AppBar";
 import { SeverityPill } from "@/components/ui/Severity";
@@ -91,6 +91,44 @@ export function TrackingScreen({
   const [copied, setCopied] = useState(false);
   const [following, setFollowing] = useState(false);
   const [flagOpen, setFlagOpen] = useState(false);
+  const pending = report.pending || report.status === "submitted";
+  const [polledPhoto, setPolledPhoto] = useState<{ token: string; url: string } | null>(null);
+  const photoUrl =
+    report.photo_url ??
+    (polledPhoto?.token === report.public_token ? polledPhoto.url : undefined);
+
+  // Anonymization runs asynchronously. Keep the freshly shared tracking page
+  // alive and replace the processing state as soon as the safe copy is ready.
+  useEffect(() => {
+    if (!pending || report.photo_url) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const response = await fetch(
+          `/api/reports/pending-photo?token=${encodeURIComponent(report.public_token)}`,
+          { cache: "no-store" },
+        );
+        if (response.ok) {
+          const body = (await response.json()) as { photo_url?: string | null };
+          if (!cancelled && body.photo_url) {
+            setPolledPhoto({ token: report.public_token, url: body.photo_url });
+            return;
+          }
+        }
+      } catch {
+        // A transient network failure should not replace the report page.
+      }
+      if (!cancelled && attempts < 24) window.setTimeout(poll, 2500);
+    };
+    const timer = window.setTimeout(poll, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pending, report.photo_url, report.public_token]);
 
   // Follow needs Web-Push support + a VAPID key (WO-6, mirrors the success
   // screen). Detected in an effect: canFollow() reads window/navigator, so
@@ -293,7 +331,9 @@ export function TrackingScreen({
         <SeverityPill
           days={days}
           label={
-            resolved
+            pending
+              ? dict.pending.badge
+              : resolved
               ? `${dict.severity.fixedAfter} ${days} ${dict.severity.days}`
               : `${dict.severity.openFor} ${days} ${dict.severity.days}`
           }
@@ -305,7 +345,7 @@ export function TrackingScreen({
         <p className="mt-1 flex items-center gap-1.5 text-[13px] text-slate">
           <Landmark size={14} className="flex-none" aria-hidden />
           <span>
-            {report.authority_name[locale] || "—"}
+            {report.authority_name[locale] || (pending ? dict.pending.title : "—")}
             {report.place ? ` · ${report.place}` : ""} ·{" "}
             <span className="tnum">{formatDate(report.created_at)}</span>
           </span>
@@ -317,9 +357,25 @@ export function TrackingScreen({
       <PhotoPlaceholder
         className="mx-4 mt-4 h-[210px] rounded-[20px]"
         pixel={!resolved}
-        src={report.photo_url}
+        src={photoUrl}
       >
-        {resolved ? (
+        {pending ? (
+          <>
+            <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/70 bg-amber-400 px-3 py-1.5 font-display text-[12px] font-black uppercase tracking-wide text-ink shadow-card">
+              <Hourglass size={13} aria-hidden /> {dict.pending.badge}
+            </div>
+            {!photoUrl && (
+              <div className="absolute inset-0 flex items-center justify-center bg-ink-fixed/20 px-8 text-center">
+                <span className="rounded-2xl bg-ink-fixed/75 px-4 py-3 text-[13px] font-semibold leading-relaxed text-white">
+                  {dict.pending.sub}
+                </span>
+              </div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-ink-fixed/70 to-transparent p-3 text-[11px] font-semibold text-white">
+              <Lock size={12} className="flex-none" aria-hidden /> {fill(dict.tracking.photoAlt, { category: catLabel })}
+            </div>
+          </>
+        ) : resolved ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-success/30">
             <div className="grid h-14 w-14 place-items-center rounded-full border-[3px] border-white bg-success text-white shadow-card">
               <Check size={30} aria-hidden />
