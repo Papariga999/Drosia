@@ -262,7 +262,11 @@
     "teaserResolved": "In der Nähe: nach {n} Tagen behoben — Vorher/Nachher ansehen",
     "emptyTitle": "Noch keine Meldungen hier",
     "emptyBody": "In Rhodos gibt es noch keine Meldungen — sei die/der Erste.",
-    "emptyCta": "Melden"
+    "emptyCta": "Melden",
+    "tierFresh": "neu < 7 T.",
+    "tierMild": "wartend < 30 T.",
+    "tierWarn": "überfällig < 60 T.",
+    "tierStale": "ignoriert 60+ T."
   },
   "list": {
     "title": "Die dringendsten",

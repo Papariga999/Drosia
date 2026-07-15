@@ -11,7 +11,7 @@ import { useLocale } from "@/components/LocaleProvider";
 import { categoryLabel } from "@/lib/categories";
 import { fill } from "@/lib/i18n";
 import { distanceKm } from "@/lib/geo";
-import { reportAgeDays, severityColor } from "@/lib/severity";
+import { reportAgeDays, severityColor, SEVERITY_COLOR } from "@/lib/severity";
 import type { PublicReport } from "@/lib/mock";
 
 export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
@@ -88,6 +88,23 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
               )}
             </div>
           )}
+        </div>
+
+        {/* Severity legend (Katharos color coding) — bottom-left overlay. */}
+        <div className="pointer-events-none absolute bottom-4 left-4 z-[450] rounded-[14px] bg-surface-card/95 px-3 py-2.5 shadow-card backdrop-blur">
+          {[
+            { color: SEVERITY_COLOR.fresh, label: dict.map.tierFresh },
+            { color: SEVERITY_COLOR.mild, label: dict.map.tierMild },
+            { color: SEVERITY_COLOR.warn, label: dict.map.tierWarn },
+            { color: SEVERITY_COLOR.stale, label: dict.map.tierStale },
+            { color: "var(--success)", label: dict.list.stResolved },
+            { color: "var(--muted)", label: dict.pending.badge },
+          ].map((row) => (
+            <div key={row.label} className="mb-1 flex items-center gap-2 last:mb-0">
+              <span className="h-3 w-3 flex-none rounded-full" style={{ background: row.color }} />
+              <span className="text-[10px] font-bold text-slate">{row.label}</span>
+            </div>
+          ))}
         </div>
 
         <button

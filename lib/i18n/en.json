@@ -262,7 +262,11 @@
     "teaserResolved": "Nearby: fixed after {n} days — see before/after",
     "emptyTitle": "No reports here yet",
     "emptyBody": "No reports in Rhodes yet — be the first.",
-    "emptyCta": "Report"
+    "emptyCta": "Report",
+    "tierFresh": "fresh < 7 d",
+    "tierMild": "waiting < 30 d",
+    "tierWarn": "overdue < 60 d",
+    "tierStale": "ignored 60+ d"
   },
   "list": {
     "title": "Most urgent",

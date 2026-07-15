@@ -9,11 +9,12 @@
  */
 export type SeverityLevel = "fresh" | "mild" | "warn" | "stale";
 
+// Katharos palette — keep in sync with the --sev-* vars in globals.css.
 export const SEVERITY_COLOR: Record<SeverityLevel, string> = {
-  fresh: "#2ECC71",
-  mild: "#F4D03F",
-  warn: "#E67E22",
-  stale: "#E74C3C",
+  fresh: "#5A6830",
+  mild: "#C9A96E",
+  warn: "#C57A3C",
+  stale: "#9A3517",
 };
 
 const MS_PER_DAY = 86_400_000;

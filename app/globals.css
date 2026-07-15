@@ -22,10 +22,11 @@
   --accent: #ffc247;
 
   /* Severity scale — the heart. Never change breakpoints. */
-  --sev-fresh: #2ecc71; /* < 7 days  */
-  --sev-mild: #f4d03f; /*  < 30 days */
-  --sev-warn: #e67e22; /*  < 60 days */
-  --sev-stale: #e74c3c; /* > 60 days */
+  /* Katharos severity palette — keep in sync with SEVERITY_COLOR in lib/severity.ts. */
+  --sev-fresh: #5a6830; /* < 7 days  */
+  --sev-mild: #c9a96e; /*  < 30 days */
+  --sev-warn: #c57a3c; /*  < 60 days */
+  --sev-stale: #9a3517; /* > 60 days */
 
   /* Surfaces & text — Light */
   --surface: #f7fbfc;
