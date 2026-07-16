@@ -2630,14 +2630,14 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
       ) : (
         <>
       <div className="mb-3.5 flex flex-wrap items-center gap-2">
-        {[7, 30, 90].map((d) => (
+        {[1, 7, 30, 90].map((d) => (
           <button
             key={d}
             onClick={() => setDays(d)}
             className="rounded-[9px] border px-3 py-1.5 text-[12px] font-bold"
             style={{ background: days === d ? "#0B2B30" : "#fff", color: days === d ? "#fff" : "#5B7378", borderColor: "#E3EDEE" }}
           >
-            Last {d} days
+            {d === 1 ? "Last 24h" : `Last ${d} days`}
           </button>
         ))}
         <span className="ml-auto text-[11px] text-[#9DB1B5]">🔒 Cookieless · no IP stored · aggregate only</span>
@@ -2658,7 +2658,7 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
             <AnalyticsKpi value={sessions} label="Sessions (approx)" color="#2D6BD8" delta={deltaPct(sessions, prevSessions)} />
             <AnalyticsKpi value={fmtDurationSeconds(web?.avg_session_seconds)} label="Avg session duration" color="#5B7378" />
             <AnalyticsKpi value={web?.report_views ?? 0} label="Report views" color="#1ECAD9" delta={deltaPct(web?.report_views ?? 0, prev?.report_views ?? 0)} />
-            <AnalyticsKpi value={submitted} label={`Reports · ${days}d`} color="#1B8B4A" delta={deltaPct(submitted, submittedPrev)} />
+            <AnalyticsKpi value={submitted} label={`Reports · ${days === 1 ? "24h" : `${days}d`}`} color="#1B8B4A" delta={deltaPct(submitted, submittedPrev)} />
             <AnalyticsKpi value={`${conv}%`} label="Session → report" color="#B7820E" delta={deltaPct(conv, convPrev)} />
           </div>
 
@@ -2669,7 +2669,7 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
 
           <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
             <div className="mb-2.5 flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Behavioral funnel · last {days} days</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Behavioral funnel · last {days === 1 ? "24h" : `${days} days`}</span>
               {(fun?.submit_fail ?? 0) > 0 && (
                 <span className="text-[11px] font-bold text-[#C0392B]">{fun?.submit_fail} failed submit{(fun?.submit_fail ?? 0) === 1 ? "" : "s"}</span>
               )}

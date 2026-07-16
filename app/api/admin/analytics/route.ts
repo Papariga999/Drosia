@@ -16,7 +16,7 @@ export async function GET(req: Request): Promise<Response> {
   if (!(await verifySession())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const daysParam = Number(new URL(req.url).searchParams.get("days"));
-  const days = [7, 30, 90].includes(daysParam) ? daysParam : 30;
+  const days = [1, 7, 30, 90].includes(daysParam) ? daysParam : 30;
 
   const { data, error } = await getSupabaseAdmin().rpc("admin_web_analytics", { p_days: days } as never);
   if (error) {
