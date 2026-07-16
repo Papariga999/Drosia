@@ -84,6 +84,43 @@ export interface DurableRateLimitOptions {
 }
 
 /**
+ * Deny cache in front of the durable limiter: once the database has confirmed
+ * a key is over its limit, repeat checks for that key are answered from
+ * instance memory until the window resets. A sustained flood from one source
+ * then costs the database roughly one write per window per instance instead of
+ * one per request. The durable limiter stays the source of truth — this only
+ * short-circuits repeats of a decision it already made. Fail-closed denials
+ * are deliberately NOT cached: they are not confirmed over-limits, and caching
+ * them would keep locking out legitimate users after a transient DB blip.
+ */
+const denyUntil = new Map<string, number>();
+const DENY_CACHE_MAX_KEYS = 10_000;
+
+function cachedDenial(key: string): RateLimitResult | null {
+  const until = denyUntil.get(key);
+  if (until === undefined) return null;
+  const now = Date.now();
+  if (now >= until) {
+    denyUntil.delete(key);
+    return null;
+  }
+  return { ok: false, remaining: 0, retryAfterSeconds: Math.max(1, Math.ceil((until - now) / 1000)) };
+}
+
+function rememberDenial(key: string, retryAfterSeconds: number): void {
+  if (denyUntil.size >= DENY_CACHE_MAX_KEYS) {
+    const now = Date.now();
+    for (const [staleKey, until] of denyUntil) {
+      if (until <= now) denyUntil.delete(staleKey);
+    }
+    // Still full after dropping expired entries: forget rather than grow —
+    // the durable limiter remains authoritative, memory stays bounded.
+    if (denyUntil.size >= DENY_CACHE_MAX_KEYS) denyUntil.clear();
+  }
+  denyUntil.set(key, Date.now() + Math.max(1, retryAfterSeconds) * 1000);
+}
+
+/**
  * Durable, cross-instance rate limit backed by Postgres (rate_limit_hit RPC).
  * The in-memory limiter above is per-serverless-instance and resets on every
  * cold start, so it cannot protect the admin login from brute force. This shares
@@ -96,6 +133,9 @@ export async function rateLimitDurable(
   windowMs: number,
   options: DurableRateLimitOptions = {},
 ): Promise<RateLimitResult> {
+  const denied = cachedDenial(key);
+  if (denied) return denied;
+
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const { data, error } = await getSupabaseAdmin().rpc("rate_limit_hit", {
@@ -108,11 +148,12 @@ export async function rateLimitDurable(
       | { allowed?: boolean; retry_after_seconds?: number }
       | null;
     if (!row || typeof row.allowed !== "boolean") throw new Error("rate_limit_hit: no row");
-    return {
-      ok: row.allowed,
-      remaining: 0,
-      retryAfterSeconds: row.allowed ? 0 : Math.max(1, Number(row.retry_after_seconds ?? 1)),
-    };
+    if (!row.allowed) {
+      const retryAfterSeconds = Math.max(1, Number(row.retry_after_seconds ?? 1));
+      rememberDenial(key, retryAfterSeconds);
+      return { ok: false, remaining: 0, retryAfterSeconds };
+    }
+    return { ok: true, remaining: 0, retryAfterSeconds: 0 };
   } catch {
     if (options.failClosedInProduction && process.env.NODE_ENV === "production") {
       return { ok: false, remaining: 0, retryAfterSeconds: 60 };

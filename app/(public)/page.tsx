@@ -2,7 +2,9 @@ import { LandingScreen } from "@/components/screens/LandingScreen";
 import { listPublicReports } from "@/lib/reports";
 import { getLandingStats } from "@/lib/stats";
 
-// Render per request so live aggregates/board reflect new reports immediately.
+// Render per request (CSP nonce); data comes from the short-TTL public-read
+// cache in lib/reports.ts, so new reports appear within ~30s without letting a
+// request flood fan out into per-view DB queries.
 export const dynamic = "force-dynamic";
 
 /** Landing / start page — /. Mission + live map + accountability board (real data). */

@@ -1,5 +1,10 @@
-import { afterEach, describe, it, expect } from "vitest";
-import { rateLimit, clientIp, pseudonymousRateLimitKey } from "@/lib/rate-limit";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { rateLimit, rateLimitDurable, clientIp, pseudonymousRateLimitKey } from "@/lib/rate-limit";
+
+const rpcMock = vi.fn();
+vi.mock("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({ rpc: rpcMock }),
+}));
 
 const originalEnv = {
   VERCEL: process.env.VERCEL,
@@ -66,6 +71,72 @@ describe("clientIp (anti-spoofing)", () => {
 
   it("returns 'unknown' when no trusted header is present", () => {
     expect(clientIp(h({}))).toBe("unknown");
+  });
+});
+
+describe("rateLimitDurable deny cache", () => {
+  beforeEach(() => {
+    rpcMock.mockReset();
+  });
+
+  it("answers repeat checks of a confirmed denial from memory (one DB call per window)", async () => {
+    const key = `deny:${Math.random()}`;
+    rpcMock.mockResolvedValue({ data: [{ allowed: false, retry_after_seconds: 30 }], error: null });
+
+    const first = await rateLimitDurable(key, 5, 60_000);
+    expect(first.ok).toBe(false);
+    expect(first.retryAfterSeconds).toBe(30);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+
+    const second = await rateLimitDurable(key, 5, 60_000);
+    expect(second.ok).toBe(false);
+    expect(second.retryAfterSeconds).toBeGreaterThan(0);
+    expect(rpcMock).toHaveBeenCalledTimes(1); // served from the deny cache
+  });
+
+  it("does not cache allowed results — every allowed check consults the DB", async () => {
+    const key = `allow:${Math.random()}`;
+    rpcMock.mockResolvedValue({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null });
+
+    expect((await rateLimitDurable(key, 5, 60_000)).ok).toBe(true);
+    expect((await rateLimitDurable(key, 5, 60_000)).ok).toBe(true);
+    expect(rpcMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache fail-closed denials — the next check retries the DB", async () => {
+    const key = `failclosed:${Math.random()}`;
+    const env = process.env.NODE_ENV;
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      rpcMock.mockRejectedValueOnce(new Error("db down"));
+      const closed = await rateLimitDurable(key, 5, 60_000, { failClosedInProduction: true });
+      expect(closed.ok).toBe(false);
+
+      rpcMock.mockResolvedValueOnce({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null });
+      const recovered = await rateLimitDurable(key, 5, 60_000, { failClosedInProduction: true });
+      expect(recovered.ok).toBe(true);
+      expect(rpcMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.stubEnv("NODE_ENV", env ?? "test");
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("expires cached denials so a later window hits the DB again", async () => {
+    const key = `expire:${Math.random()}`;
+    vi.useFakeTimers();
+    try {
+      rpcMock.mockResolvedValue({ data: [{ allowed: false, retry_after_seconds: 2 }], error: null });
+      expect((await rateLimitDurable(key, 5, 60_000)).ok).toBe(false);
+      expect(rpcMock).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(2_100);
+      rpcMock.mockResolvedValue({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null });
+      expect((await rateLimitDurable(key, 5, 60_000)).ok).toBe(true);
+      expect(rpcMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -54,6 +54,60 @@ Activates Greece (placeholder geofence boundary) and the Rhodes/Kos authorities 
 Open the URL → submit at `/report` with Greek coordinates (e.g. `36.34, 28.12`, inside Rhodes) →
 sign in at `/admin` → **Approve & send** → the report appears on `/map` and `/r/<token>`.
 
+## 5. DDoS & abuse protection (ops)
+
+Defense is layered — know which layer you're looking at before changing anything:
+
+1. **App-level rate limits** (code): every public write endpoint uses a durable per-IP
+   limit that **fails closed** in production ([`lib/rate-limit.ts`](lib/rate-limit.ts)).
+   Confirmed denials are answered from an in-memory deny cache until the window resets,
+   so a sustained flood costs the DB ~one write per window instead of one per request.
+   Protects against abuse (spam, brute force, vote inflation), not floods.
+2. **Public-read cache** (code): landing/map/urgent/nearby reads go through a 30–60s
+   TTL cache ([`lib/ttl-cache.ts`](lib/ttl-cache.ts)), so a page-view flood does not
+   fan out into per-request Supabase queries.
+3. **Vercel WAF rule** (live in production, stops floods *before* a function is invoked
+   or the DB is touched): `Rate limit report submissions` — `POST /api/report`,
+   **10 req / 60 s per IP → deny**. Inspect / manage:
+
+   ```bash
+   npx vercel firewall rules list --scope salvatores-projects-73e81593
+   npx vercel firewall rules inspect "Rate limit report submissions" --scope salvatores-projects-73e81593
+   ```
+
+   The Hobby plan allows **one** rate-limit rule; it's spent on `/api/report` (the
+   expensive endpoint: uploads, sharp, storage). **On Pro upgrade**, add a second rule
+   for the admin login:
+
+   ```bash
+   npx vercel firewall rules add "Rate limit admin login" \
+     --condition '{"type":"path","op":"eq","value":"/api/admin/login"}' \
+     --condition '{"type":"method","op":"eq","value":"POST"}' \
+     --action rate_limit --rate-limit-window 60 --rate-limit-requests 20 \
+     --rate-limit-keys ip --rate-limit-action deny --yes
+   # then: npx vercel firewall publish --yes
+   ```
+
+4. **Break-glass — Attack Challenge Mode** (use during an active L7 flood; challenges
+   every visitor with a verification page, takes effect immediately, no publish step):
+
+   ```bash
+   npx vercel firewall attack-mode enable --scope salvatores-projects-73e81593   # during attack
+   npx vercel firewall attack-mode disable --scope salvatores-projects-73e81593  # after
+   ```
+
+   Browser visitors pass the challenge and can keep reporting; plain API clients are
+   blocked while enabled. Never leave it on outside an incident.
+5. **Spend**: on the current **Hobby** plan there is no pay-per-use billing — the
+   platform pauses the site at the free-tier caps, so "denial of wallet" cannot happen.
+   **Immediately after any Pro upgrade**: Vercel dashboard → team **Settings →
+   Billing → Spend Management** → set a monthly budget, enable the pause-at-budget
+   action, and add an email/webhook alert. Do this in the same sitting as the upgrade.
+
+**Incident quick-path**: unexplained traffic/cost spike → check the Firewall tab in the
+Vercel dashboard (observability of blocked vs. served) → enable attack mode (above) →
+watch Supabase load in its dashboard → disable when traffic normalizes.
+
 ## Known placeholders (replace before a real launch)
 
 - **Anonymizer** ([`lib/providers/anonymize.ts`](lib/providers/anonymize.ts)) defaults to a full-image

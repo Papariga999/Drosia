@@ -13,6 +13,10 @@ const config = [
       // App Router: fonts are loaded once in the shared root layout, so this
       // Pages-Router (_document.js) oriented rule is a false positive here.
       "@next/next/no-page-custom-font": "off",
+      // Destructuring props only to omit them from `...rest` (e.g. the
+      // design-sync next/link stub stripping router-only props before
+      // spreading onto <a>) is intentional, not dead code.
+      "@typescript-eslint/no-unused-vars": ["warn", { ignoreRestSiblings: true }],
     },
   },
   {

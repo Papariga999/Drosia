@@ -1,7 +1,8 @@
 import { MapScreen } from "@/components/screens/MapScreen";
 import { listPublicReports } from "@/lib/reports";
 
-// Render per request so newly published reports show without a rebuild.
+// Render per request (CSP nonce); pins come from the short-TTL public-read
+// cache in lib/reports.ts — newly published reports show within ~30s.
 export const dynamic = "force-dynamic";
 
 /**

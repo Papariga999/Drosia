@@ -1,7 +1,8 @@
 import { ListScreen } from "@/components/screens/ListScreen";
 import { listPublicReports } from "@/lib/reports";
 
-// Render per request so the ranking reflects new reports/votes immediately.
+// Render per request (CSP nonce); the ranking reads the short-TTL public-read
+// cache in lib/reports.ts, so new reports/votes show within ~30s.
 export const dynamic = "force-dynamic";
 
 /** Most-urgent list — /urgent. Ranked by votes & confirmations (real data). */

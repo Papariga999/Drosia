@@ -8,6 +8,7 @@ import { MOCK_REPORTS } from "./mock";
 import { getSupabasePublic, publicSupabaseConfigured } from "./supabase/public";
 import { getSupabaseAdmin } from "./supabase/admin";
 import { parseReportPoint } from "./report-point";
+import { TtlCache } from "./ttl-cache";
 
 /**
  * Server-side public reads. Published reports use privacy-safe SQL views.
@@ -257,8 +258,25 @@ export interface ScorecardEntry {
   resolution_rate_pct: number;
 }
 
+/**
+ * Short-TTL caches for the flood-prone public reads (landing, map, urgent,
+ * nearby, /r/<token> nearby cards). Moderation actions appear within the TTL;
+ * a request flood collapses to O(1) DB reads per instance per window instead
+ * of 3–4 queries per page view. getPublicReport stays UNCACHED on purpose:
+ * its key space is unbounded (cache-pollution vector) and the submitter's
+ * status/photo polling must be fresh. See lib/ttl-cache.ts.
+ */
+const REPORT_LIST_TTL_MS = 30_000;
+const SCORECARD_TTL_MS = 60_000;
+const reportListCache = new TtlCache<PublicReport[]>(REPORT_LIST_TTL_MS);
+const scorecardCache = new TtlCache<ScorecardEntry[]>(SCORECARD_TTL_MS);
+
 /** Authority scorecard — fairness already enforced in the view (n>=10, notified-only). */
 export async function getScorecard(): Promise<ScorecardEntry[]> {
+  return scorecardCache.get("scorecard", getScorecardUncached);
+}
+
+async function getScorecardUncached(): Promise<ScorecardEntry[]> {
   if (!supabaseConfigured()) return []; // no fake board, even in dev (anti-pattern guard)
   try {
     const { data, error } = await getSupabasePublic()
@@ -289,6 +307,10 @@ export async function getScorecard(): Promise<ScorecardEntry[]> {
 }
 
 export async function listPublicReports(limit = 200): Promise<PublicReport[]> {
+  return reportListCache.get(`list:${limit}`, () => listPublicReportsUncached(limit));
+}
+
+async function listPublicReportsUncached(limit: number): Promise<PublicReport[]> {
   if (!supabaseConfigured()) {
     if (isProd()) return [];
     return MOCK_REPORTS;
