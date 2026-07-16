@@ -7,6 +7,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  Images,
   Info,
   Landmark,
   Link2,
@@ -73,7 +74,7 @@ export function ReportFlow() {
   const [error, setError] = useState<string | null>(null);
   const [token, setToken] = useState<string | null>(null);
   // Two inputs, one handler: `capture` forces mobile browsers straight into the
-  // camera and never shows the gallery — so the camera-first CTA keeps it, and
+  // camera and never shows the gallery — the "take photo" button uses it, and
   // "upload from gallery" uses a capture-less input (the OS chooser, which
   // offers both gallery and camera). One input can't do both.
   const cameraInput = useRef<HTMLInputElement>(null);
@@ -314,19 +315,20 @@ export function ReportFlow() {
                 e.target.value = "";
               }}
             />
-            <div className="flex h-[200px] w-full flex-col rounded-[20px] border-2 border-dashed border-primary/50 bg-tint-soft">
+            <div className="grid w-full grid-cols-2 gap-3">
               <button
                 onClick={() => cameraInput.current?.click()}
-                className="flex w-full flex-1 flex-col items-center justify-center gap-2.5"
+                className="flex h-[160px] flex-col items-center justify-center gap-2.5 rounded-[20px] border-2 border-dashed border-primary/50 bg-tint-soft"
               >
-                <Camera size={38} className="text-primary-ink" aria-hidden />
-                <div className="font-display text-[15px] font-extrabold text-primary-ink">{dict.flow.s1Cta}</div>
+                <Camera size={34} className="text-primary-ink" aria-hidden />
+                <div className="px-2 text-center font-display text-[14px] font-extrabold text-primary-ink">{dict.flow.s1Cta}</div>
               </button>
               <button
                 onClick={() => galleryInput.current?.click()}
-                className="pb-4 text-[12px] text-slate underline underline-offset-2"
+                className="flex h-[160px] flex-col items-center justify-center gap-2.5 rounded-[20px] border-2 border-dashed border-primary/50 bg-tint-soft"
               >
-                {dict.flow.s1Hint}
+                <Images size={34} className="text-primary-ink" aria-hidden />
+                <div className="px-2 text-center font-display text-[14px] font-extrabold text-primary-ink">{dict.flow.s1Gallery}</div>
               </button>
             </div>
             <div className="mt-3.5 flex gap-2.5">
@@ -346,7 +348,7 @@ export function ReportFlow() {
               {files.length < MAX_PHOTOS && (
                 <button
                   onClick={() => galleryInput.current?.click()}
-                  aria-label={dict.flow.s1Hint}
+                  aria-label={dict.flow.s1Gallery}
                   className="grid h-20 w-20 place-items-center rounded-[14px] border-[1.5px] border-dashed border-line-strong bg-surface text-primary/50"
                 >
                   <Plus size={22} aria-hidden />

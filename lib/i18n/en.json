@@ -84,7 +84,7 @@
     "s1Title": "Photograph the problem",
     "s1Sub": "One clear photo is enough. Up to 3.",
     "s1Cta": "Take photo",
-    "s1Hint": "or upload from gallery",
+    "s1Gallery": "Upload from gallery",
     "photoCount": "{n} / 3 photos",
     "exampleTitle": "What a good photo looks like",
     "exGood": "Close, in focus",
