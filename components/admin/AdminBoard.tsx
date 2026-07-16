@@ -2570,6 +2570,13 @@ function deltaPct(cur: number, prev: number): number | null {
   return Math.round(((cur - prev) / prev) * 100);
 }
 
+/** Share of a total as a compact percent; "<1%" instead of a misleading 0%. */
+function pctOf(value: number, total: number | undefined): string | null {
+  if (!total || total <= 0 || value <= 0) return null;
+  const pct = (value / total) * 100;
+  return pct < 1 ? "<1%" : `${Math.round(pct)}%`;
+}
+
 function fmtDurationSeconds(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return "-";
   if (seconds < 60) return `${seconds}s`;
@@ -2660,6 +2667,12 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
       .sort((a, b) => b.views - a.views)
       .slice(0, 8);
   }, [geo]);
+
+  // Percent denominators: pageview-grouped cards share the period's pageview
+  // total; areas use only geo-tagged views; shares use total share clicks.
+  const totalViews = web?.pageviews ?? 0;
+  const geoTotalViews = geo.reduce((sum, g) => sum + g.views, 0);
+  const shareTotal = (web?.shares ?? []).reduce((sum, r) => sum + r.views, 0);
 
   return (
     <div>
@@ -2757,21 +2770,23 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" />
+            <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" total={totalViews} />
             <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono hrefFor={(token) => `/r/${token}`} />
-            <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" />
-            <BreakdownCard title="Top areas" rows={areaRows} empty="No area data yet (recorded from 16 Jul 2026)" />
-            <BreakdownCard title="Operating systems" rows={web?.systems ?? []} empty="No OS data yet" />
+            <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" total={totalViews} />
+            <BreakdownCard title="Top areas" rows={areaRows} empty="No area data yet (recorded from 16 Jul 2026)" total={geoTotalViews} />
+            <BreakdownCard title="Operating systems" rows={web?.systems ?? []} empty="No OS data yet" total={totalViews} />
             <BreakdownCard
               title="Languages"
               rows={(web?.languages ?? []).map((r) => ({ ...r, label: LANGUAGE_LABELS[r.label] ?? r.label }))}
               empty="No data yet"
+              total={totalViews}
             />
-            <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" />
+            <BreakdownCard title="Devices" rows={web?.devices ?? []} empty="No data yet" total={totalViews} />
             <BreakdownCard
               title="Share options"
               rows={(web?.shares ?? []).map((r) => ({ ...r, label: SHARE_LABELS[r.label] ?? r.label }))}
               empty="No share clicks yet"
+              total={shareTotal}
             />
           </div>
         </>
@@ -2913,9 +2928,9 @@ function ReportInsights({ flash }: { flash: (m: string) => void }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <CountBreakdown title="By category" rows={data?.by_category ?? []} />
-            <CountBreakdown title="Top authorities" rows={data?.by_authority ?? []} />
-            <CountBreakdown title="Rejection reasons" rows={data?.rejections.by_reason ?? []} empty="No rejections" />
+            <CountBreakdown title="By category" rows={data?.by_category ?? []} total={data?.totals.reports} />
+            <CountBreakdown title="Top authorities" rows={data?.by_authority ?? []} total={data?.totals.reports} />
+            <CountBreakdown title="Rejection reasons" rows={data?.rejections.by_reason ?? []} empty="No rejections" total={data?.rejections.total} />
             <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
               <div className="mb-2.5 text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">Status mix</div>
               {!statusRows.length ? (
@@ -2938,7 +2953,7 @@ function ReportInsights({ flash }: { flash: (m: string) => void }) {
   );
 }
 
-function CountBreakdown({ title, rows, empty }: { title: string; rows: { label: string; count: number; resolved?: number }[]; empty?: string }) {
+function CountBreakdown({ title, rows, empty, total }: { title: string; rows: { label: string; count: number; resolved?: number }[]; empty?: string; total?: number }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
     <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
@@ -2953,8 +2968,9 @@ function CountBreakdown({ title, rows, empty }: { title: string; rows: { label: 
               <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
                 <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.count / max) * 100}%` }} />
               </div>
-              <div className="tnum w-[64px] text-right text-[12px] font-bold text-[#0B2B30]">
+              <div className={`tnum ${total != null ? "w-[108px]" : "w-[64px]"} text-right text-[12px] font-bold text-[#0B2B30]`}>
                 {r.count}
+                {pctOf(r.count, total) && <span className="ml-1 font-normal text-[11px] text-[#9DB1B5]">{pctOf(r.count, total)}</span>}
                 {r.resolved != null && r.resolved > 0 && <span className="text-[#1B8B4A]"> ·{r.resolved}✓</span>}
               </div>
             </div>
@@ -3024,7 +3040,7 @@ const SHARE_LABELS: Record<string, string> = {
   unknown: "Unknown",
 };
 
-function BreakdownCard({ title, rows, empty, mono, hrefFor }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean; hrefFor?: (label: string) => string }) {
+function BreakdownCard({ title, rows, empty, mono, hrefFor, total }: { title: string; rows: { label: string; views: number }[]; empty: string; mono?: boolean; hrefFor?: (label: string) => string; total?: number }) {
   const max = Math.max(1, ...rows.map((r) => r.views));
   return (
     <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">
@@ -3053,7 +3069,10 @@ function BreakdownCard({ title, rows, empty, mono, hrefFor }: { title: string; r
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#F0F4F5]">
                   <div className="h-full rounded-full bg-[#9FE0E8]" style={{ width: `${(r.views / max) * 100}%` }} />
                 </div>
-                <div className="tnum w-[44px] text-right text-[12px] font-bold text-[#0B2B30]">{r.views}</div>
+                <div className={`tnum ${total != null ? "w-[96px]" : "w-[44px]"} text-right text-[12px] font-bold text-[#0B2B30]`}>
+                  {r.views}
+                  {pctOf(r.views, total) && <span className="ml-1 font-normal text-[11px] text-[#9DB1B5]">{pctOf(r.views, total)}</span>}
+                </div>
               </div>
             );
           })}
