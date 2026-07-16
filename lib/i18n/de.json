@@ -251,6 +251,8 @@
   },
   "map": {
     "near": "In der Nähe",
+    "locDenied": "Standortzugriff ist blockiert — erlaube ihn in den Browser-Einstellungen.",
+    "locFailed": "Standort konnte nicht ermittelt werden — bitte versuch es erneut.",
     "open": "Offen",
     "cat": "Kategorie",
     "details": "Details",

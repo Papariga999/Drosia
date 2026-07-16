@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type { Map as LeafletMapInstance } from "leaflet";
+import type { LayerGroup, Map as LeafletMapInstance } from "leaflet";
 import { Hourglass, Sparkles, ThumbsUp } from "lucide-react";
 import { DrosiaMap } from "@/components/maps/DrosiaMap";
 import { BottomNav } from "@/components/ui/BottomNav";
@@ -17,9 +17,17 @@ import type { PublicReport } from "@/lib/mock";
 export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   const { dict } = useLocale();
   const mapRef = useRef<LeafletMapInstance | null>(null);
+  const userLayerRef = useRef<LayerGroup | null>(null);
   const [sheet, setSheet] = useState(false);
   const [selectedToken, setSelectedToken] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<"denied" | "failed" | null>(null);
+
+  useEffect(() => {
+    if (!geoError) return;
+    const timer = setTimeout(() => setGeoError(null), 6000);
+    return () => clearTimeout(timer);
+  }, [geoError]);
 
   const mappedReports = useMemo(
     () => reports.filter((report) => Number.isFinite(report.lat) && Number.isFinite(report.lng)),
@@ -46,15 +54,49 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
   }, []);
 
   function locateUser() {
-    if (!navigator.geolocation || !mapRef.current || locating) return;
+    if (locating) return;
+    if (!navigator.geolocation || !mapRef.current) {
+      setGeoError("failed");
+      return;
+    }
+    setGeoError(null);
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        mapRef.current?.setView([coords.latitude, coords.longitude], 15);
+      async ({ coords }) => {
+        const L = await import("leaflet");
+        const map = mapRef.current;
         setLocating(false);
+        if (!map) return;
+        // "You are here": blue dot + honest accuracy circle, replaced on re-tap.
+        const here: [number, number] = [coords.latitude, coords.longitude];
+        userLayerRef.current?.remove();
+        userLayerRef.current = L.layerGroup([
+          L.circle(here, {
+            radius: coords.accuracy,
+            color: "#2D6BD8",
+            weight: 1,
+            opacity: 0.35,
+            fillColor: "#2D6BD8",
+            fillOpacity: 0.12,
+            interactive: false,
+          }),
+          L.circleMarker(here, {
+            radius: 7,
+            color: "#fff",
+            weight: 2.5,
+            fillColor: "#2D6BD8",
+            fillOpacity: 1,
+            interactive: false,
+          }),
+        ]).addTo(map);
+        map.setView(here, 15);
       },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 8000 },
+      (err) => {
+        setLocating(false);
+        setGeoError(err.code === err.PERMISSION_DENIED ? "denied" : "failed");
+      },
+      // A first GPS fix on mobile can take a while; a recent cached fix is fine.
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
   }
 
@@ -107,6 +149,15 @@ export function MapScreen({ reports = [] }: { reports?: PublicReport[] }) {
           ))}
         </div>
 
+        {geoError && (
+          <button
+            role="status"
+            onClick={() => setGeoError(null)}
+            className="absolute bottom-[198px] right-4 z-[450] max-w-[75%] rounded-[12px] bg-surface-card/95 px-3 py-2.5 text-left text-[12px] font-bold leading-snug text-[#B7820E] shadow-card backdrop-blur"
+          >
+            {geoError === "denied" ? dict.map.locDenied : dict.map.locFailed}
+          </button>
+        )}
         <button
           onClick={locateUser}
           className="absolute bottom-36 right-4 z-[450] grid h-[46px] w-[46px] place-items-center rounded-[14px] bg-surface-card text-primary-ink shadow-card"

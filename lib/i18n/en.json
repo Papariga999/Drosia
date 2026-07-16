@@ -251,6 +251,8 @@
   },
   "map": {
     "near": "Near me",
+    "locDenied": "Location access is blocked for this site — allow it in your browser settings.",
+    "locFailed": "Couldn't get your location — please try again.",
     "open": "Open",
     "cat": "Category",
     "details": "Details",
