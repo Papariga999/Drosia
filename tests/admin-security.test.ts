@@ -35,9 +35,9 @@ describe("admin authentication configuration", () => {
 
 describe("admin CSRF origin guard", () => {
   it("accepts a same-origin browser mutation", () => {
-    const req = new Request("https://drosia.eu/api/admin/reports/approve", {
+    const req = new Request("https://drosia.example/api/admin/reports/approve", {
       method: "POST",
-      headers: { origin: "https://drosia.eu", "sec-fetch-site": "same-origin" },
+      headers: { origin: "https://drosia.example", "sec-fetch-site": "same-origin" },
     });
     expect(isMutationMethod(req.method)).toBe(true);
     expect(isSameOriginRequest(req)).toBe(true);
@@ -45,9 +45,9 @@ describe("admin CSRF origin guard", () => {
 
   it("rejects cross-origin and same-site sibling requests", () => {
     for (const fetchSite of ["cross-site", "same-site"]) {
-      const req = new Request("https://drosia.eu/api/admin/reports/approve", {
+      const req = new Request("https://drosia.example/api/admin/reports/approve", {
         method: "POST",
-        headers: { origin: "https://evil.drosia.eu", "sec-fetch-site": fetchSite },
+        headers: { origin: "https://evil.drosia.example", "sec-fetch-site": fetchSite },
       });
       expect(isSameOriginRequest(req)).toBe(false);
     }
@@ -55,7 +55,7 @@ describe("admin CSRF origin guard", () => {
 
   it("keeps non-browser operator clients possible while auth remains mandatory", () => {
     expect(
-      isSameOriginRequest(new Request("https://drosia.eu/api/admin/tasks", { method: "DELETE" })),
+      isSameOriginRequest(new Request("https://drosia.example/api/admin/tasks", { method: "DELETE" })),
     ).toBe(true);
   });
 });

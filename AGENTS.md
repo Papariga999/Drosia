@@ -7,7 +7,7 @@
 
 ## 1. Projekt
 
-**Drosia** (δροσιά = Frische), Domain **drosia.eu**. Login-freie Civic-Web-App: Bürger/Touristen melden **Müll, illegale Ablagerungen, Umweltverstöße** in <60 s ohne Konto. Ablauf: Foto → Standort (Foto-EXIF → Live-GPS → Karten-Pin) → **Geofence aufs Land** → **Zuordnung zur zuständigen Behörde (PostGIS)** → **Auto-Anonymisierung** → Moderation → **Zustellung (E-Mail oder Open311)** → öffentliche Tracking-Seite + Karte + **Behörden-Accountability-Index**.
+**Drosia** (δροσιά = Frische), Domain **drosia.eu** *(geplant, noch NICHT gekauft — bis zum Kauf nirgends in Code/UI/Metadaten referenzieren; aktuelle URL ist `https://drosia.vercel.app`, zentral über `lib/site-url.ts`)*. Login-freie Civic-Web-App: Bürger/Touristen melden **Müll, illegale Ablagerungen, Umweltverstöße** in <60 s ohne Konto. Ablauf: Foto → Standort (Foto-EXIF → Live-GPS → Karten-Pin) → **Geofence aufs Land** → **Zuordnung zur zuständigen Behörde (PostGIS)** → **Auto-Anonymisierung** → Moderation → **Zustellung (E-Mail oder Open311)** → öffentliche Tracking-Seite + Karte + **Behörden-Accountability-Index**.
 
 **Launch: Griechenland (eine Insel-Region). Architektur & Datenmodell: ab Tag 1 EU-ready** — kein „Greece"/„Δήμος" hartcodiert; Land und Behörde sind **Daten, keine Konstanten**.
 

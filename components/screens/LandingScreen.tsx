@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import Link from "next/link";
+import { SITE_HOST } from "@/lib/site-url";
 import {
   BarChart3,
   Bell,
@@ -280,7 +281,7 @@ export function LandingScreen({ stats, reports }: { stats: LandingStats; reports
       </div>
 
       <footer className="px-6 pb-6 text-center text-[11px] text-muted">
-        <div>Drosia · drosia.eu</div>
+        <div>Drosia · {SITE_HOST}</div>
         <div className="mt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
           <Link href="/privacy" className="underline-offset-2 hover:underline">{dict.footer.privacy}</Link>
           <span aria-hidden>·</span>

@@ -30,7 +30,7 @@ You need a Postgres + PostGIS + Storage instance. Easiest is local Supabase via 
 
 > Without Supabase configured, the public pages fall back to demo data and submitting returns a clear "backend not configured" message — so the UI is still browsable, but the real loop needs the DB.
 
-**Production note:** the dev anonymizer applies a full-image blur (privacy-safe but low-utility) — production must swap in real selective face/plate detection behind `lib/providers/anonymize.ts`. The seed's GR boundary is a placeholder bbox; load the real GeoJSON before launch. The sender domain **drosia.eu** must be verified in Resend (SPF/DKIM/DMARC) before real email — deliverability is a P0 blocker.
+**Production note:** the dev anonymizer applies a full-image blur (privacy-safe but low-utility) — production must swap in real selective face/plate detection behind `lib/providers/anonymize.ts`. The seed's GR boundary is a placeholder bbox; load the real GeoJSON before launch. A sender domain you **own** must be verified in Resend (SPF/DKIM/DMARC) before real email — deliverability is a P0 blocker. (The planned domain is not purchased yet; until then the app runs on drosia.vercel.app and email falls back to Resend's sandbox sender.)
 
 ## Quality gates (every phase)
 - `npm run typecheck` → 0 errors

@@ -81,7 +81,8 @@ export async function GET(req: Request): Promise<Response> {
   ].join("\n");
 
   const apiKey = process.env.RESEND_API_KEY?.startsWith("re_") ? process.env.RESEND_API_KEY : null;
-  const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
+  // `||` (not ??): prod sets EMAIL_FROM="" until a domain is owned+verified.
+  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
   if (!apiKey) {
     console.info(`[digest:dev] would email ${to.join(", ")} | ${subject}`);
     return NextResponse.json({ delivery: "dev", subject, recipients: to.length });

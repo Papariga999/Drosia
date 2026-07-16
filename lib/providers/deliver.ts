@@ -87,7 +87,9 @@ class EmailDeliverer implements ReportDeliverer {
     // Only a real Resend key (re_…) triggers a live send.
     const rawKey = process.env.RESEND_API_KEY;
     const apiKey = rawKey && rawKey.startsWith("re_") ? rawKey : null;
-    const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
+    // `||` (not ??): prod sets EMAIL_FROM="" until a domain is owned+verified.
+    // Resend's sandbox sender works without one; drosia.eu is not bought yet.
+    const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
 
     if (!apiKey) {
       // Production: a missing/placeholder key MUST surface as a FAILED delivery

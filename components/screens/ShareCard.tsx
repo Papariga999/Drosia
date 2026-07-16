@@ -1,4 +1,5 @@
 import type { Dict } from "@/lib/i18n";
+import { SITE_HOST } from "@/lib/site-url";
 
 /**
  * ShareCard / OG image — 1200×630, always anonymized, factual (numbers + status
@@ -44,7 +45,7 @@ export function ShareCard({
   resolvedDays?: number;
   token?: string;
 }) {
-  const url = `drosia.eu/r/${token}`;
+  const url = `${SITE_HOST}/r/${token}`;
 
   if (variant === "ignored") {
     return (

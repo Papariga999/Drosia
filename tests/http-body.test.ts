@@ -6,7 +6,7 @@ import {
 
 describe("bounded request body parsing", () => {
   it("accepts a small JSON object", async () => {
-    const req = new Request("https://drosia.eu/api/test", {
+    const req = new Request("https://drosia.example/api/test", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ok: true }),
@@ -15,7 +15,7 @@ describe("bounded request body parsing", () => {
   });
 
   it("rejects oversized bodies even without relying on Content-Length", async () => {
-    const req = new Request("https://drosia.eu/api/test", {
+    const req = new Request("https://drosia.example/api/test", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ value: "x".repeat(100) }),
@@ -24,14 +24,14 @@ describe("bounded request body parsing", () => {
   });
 
   it("rejects non-object JSON and the wrong media type", async () => {
-    const arrayReq = new Request("https://drosia.eu/api/test", {
+    const arrayReq = new Request("https://drosia.example/api/test", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "[]",
     });
     await expect(readJsonBody(arrayReq)).rejects.toMatchObject({ status: 400 });
 
-    const textReq = new Request("https://drosia.eu/api/test", {
+    const textReq = new Request("https://drosia.example/api/test", {
       method: "POST",
       headers: { "content-type": "text/plain" },
       body: "{}",
@@ -42,12 +42,12 @@ describe("bounded request body parsing", () => {
   it("parses multipart only after enforcing the total byte limit", async () => {
     const form = new FormData();
     form.set("field", "value");
-    const accepted = new Request("https://drosia.eu/api/test", { method: "POST", body: form });
+    const accepted = new Request("https://drosia.example/api/test", { method: "POST", body: form });
     await expect(readMultipartFormData(accepted, 4096)).resolves.toBeInstanceOf(FormData);
 
     const large = new FormData();
     large.set("field", "x".repeat(4096));
-    const rejected = new Request("https://drosia.eu/api/test", { method: "POST", body: large });
+    const rejected = new Request("https://drosia.example/api/test", { method: "POST", body: large });
     await expect(readMultipartFormData(rejected, 128)).rejects.toMatchObject({ status: 413 });
   });
 });

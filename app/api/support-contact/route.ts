@@ -59,7 +59,8 @@ function configured(): boolean {
  */
 async function notifyTeam(lead: Lead): Promise<void> {
   const to = CONTACT_EMAIL;
-  const from = process.env.EMAIL_FROM ?? "reports@drosia.eu";
+  // `||` (not ??): prod sets EMAIL_FROM="" until a domain is owned+verified.
+  const from = process.env.EMAIL_FROM || "onboarding@resend.dev";
   const subject = `New Drosia supporter message: ${ROLE_LABEL[lead.role] ?? lead.role}`;
   const text = [
     `Name: ${lead.name}`,

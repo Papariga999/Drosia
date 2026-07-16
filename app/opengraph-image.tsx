@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { SITE_HOST } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 export const alt = "Drosia — See it. Report it. Watch what happens.";
@@ -66,7 +67,7 @@ export default async function DefaultOpenGraphImage() {
             <div style={{ display: "flex", color: "#00A6BC" }}>Watch what happens.</div>
           </div>
           <div style={{ display: "flex", marginTop: 24, fontSize: 30, color: "#5B7378" }}>
-            Report litter in under 60 seconds — no account · drosia.eu
+            Report litter in under 60 seconds — no account · {SITE_HOST}
           </div>
         </div>
       </div>

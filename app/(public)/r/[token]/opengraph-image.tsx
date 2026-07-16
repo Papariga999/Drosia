@@ -3,6 +3,7 @@ import { categoryLabel } from "@/lib/categories";
 import { getDict, type Locale } from "@/lib/i18n";
 import { getPublicReport } from "@/lib/reports";
 import { reportAgeDays } from "@/lib/severity";
+import { SITE_HOST } from "@/lib/site-url";
 
 export const runtime = "nodejs";
 export const alt = "Drosia report share card";
@@ -140,7 +141,7 @@ export default async function ReportOpenGraphImage({
           </div>
 
           <div style={{ display: "flex", fontSize: 24, fontWeight: 800 }}>
-            drosia.eu/r/{report.public_token}
+            {SITE_HOST}/r/{report.public_token}
           </div>
         </div>
 
