@@ -1074,6 +1074,13 @@ create table if not exists web_events (
 alter table web_events add column if not exists os text;
 alter table web_events add column if not exists share_channel text;
 alter table web_events add column if not exists duration_ms integer;
+-- City-level visitor geo from the edge headers (never the IP): ISO-3166-2
+-- subdivision code, city name, and city-centroid coords rounded to 2 decimals
+-- at ingest (lib/edge-geo.ts) — describes the city, not the visitor.
+alter table web_events add column if not exists region text;
+alter table web_events add column if not exists city text;
+alter table web_events add column if not exists geo_lat double precision;
+alter table web_events add column if not exists geo_lng double precision;
 create index if not exists idx_web_events_created on web_events (created_at);
 create index if not exists idx_web_events_report  on web_events (report_token) where report_token is not null;
 create index if not exists idx_web_events_event   on web_events (event);
@@ -1155,6 +1162,12 @@ select jsonb_build_object(
     'timeseries',(select coalesce(jsonb_agg(jsonb_build_object('day',day,'pageviews',pageviews,'sessions',sessions) order by day),'[]'::jsonb) from ts),
     'sources',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(source,'direct'),'views',count(*)) j from ev where event='pageview' group by coalesce(source,'direct') order by count(*) desc limit 8) x),
     'countries',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(country,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(country,'?') order by count(*) desc limit 8) x),
+    'geo',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (
+       select jsonb_build_object('country',country,'region',region,'city',city,'lat',geo_lat,'lng',geo_lng,
+                                 'views',count(*),'sessions',count(distinct sid)) j
+       from ev where event='pageview' and geo_lat is not null and geo_lng is not null
+       group by country, region, city, geo_lat, geo_lng
+       order by count(*) desc limit 300) x),
     'devices',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (select jsonb_build_object('label',coalesce(device,'?'),'views',count(*)) j from ev where event='pageview' group by coalesce(device,'?') order by count(*) desc) x),
     'systems',(select coalesce(jsonb_agg(j),'[]'::jsonb) from (
        select jsonb_build_object('label',label,'views',count(*)) j

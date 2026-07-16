@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DrosiaMark } from "@/components/brand/Logo";
-import { DrosiaMap, type DrosiaMapPoint } from "@/components/maps/DrosiaMap";
+import { DrosiaMap, type DrosiaMapCircle, type DrosiaMapPoint } from "@/components/maps/DrosiaMap";
 import { CATEGORY_META, REPORT_CATEGORIES, isReportCategory } from "@/lib/categories";
 import { reportAgeDays } from "@/lib/severity";
 import type {
@@ -2520,6 +2520,8 @@ interface WebAnalytics {
     timeseries: { day: string; pageviews: number; sessions: number }[];
     sources: { label: string; views: number }[];
     countries: { label: string; views: number }[];
+    /** City-level areas (edge geo, no IP); absent until the geo migration ran. */
+    geo?: GeoArea[];
     devices: { label: string; views: number }[];
     systems: { label: string; views: number }[];
     languages: { label: string; views: number }[];
@@ -2542,6 +2544,24 @@ interface WebAnalytics {
     resolved: number;
     by_status: Record<string, number>;
   };
+}
+
+interface GeoArea {
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  lat: number;
+  lng: number;
+  views: number;
+  sessions: number;
+}
+
+/** "Ródos (L) · GR" — city first (the human-readable part), subdivision code, country. */
+function areaLabel(area: GeoArea): string {
+  const cc = area.country ?? "?";
+  if (area.city) return `${area.city}${area.region ? ` (${area.region})` : ""} · ${cc}`;
+  if (area.region) return `${area.region} · ${cc}`;
+  return cc;
 }
 
 /** Period-over-period % change; null when there's no prior baseline. */
@@ -2619,6 +2639,28 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
   const conv = sessions > 0 ? Math.round((submitted / sessions) * 1000) / 10 : 0;
   const convPrev = prevSessions > 0 ? (submittedPrev / prevSessions) * 100 : 0;
 
+  // Visitor areas: one circle per (city, region, rounded centroid), scaled by
+  // views. Same rows also feed the "Top areas" list, aggregated by label.
+  const geo = useMemo(() => web?.geo ?? [], [web?.geo]);
+  const geoCircles = useMemo<DrosiaMapCircle[]>(() => {
+    const maxViews = Math.max(1, ...geo.map((g) => g.views));
+    return geo.map((g) => ({
+      lat: g.lat,
+      lng: g.lng,
+      radius: 5 + Math.round(13 * Math.sqrt(g.views / maxViews)),
+      color: "#00A6BC",
+      tooltip: `${areaLabel(g)} — ${g.views} view${g.views === 1 ? "" : "s"} · ${g.sessions} session${g.sessions === 1 ? "" : "s"}`,
+    }));
+  }, [geo]);
+  const areaRows = useMemo(() => {
+    const byLabel = new Map<string, number>();
+    for (const g of geo) byLabel.set(areaLabel(g), (byLabel.get(areaLabel(g)) ?? 0) + g.views);
+    return [...byLabel.entries()]
+      .map(([label, views]) => ({ label, views }))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 8);
+  }, [geo]);
+
   return (
     <div>
       <div className="mb-4 flex gap-2">
@@ -2687,10 +2729,38 @@ function AnalyticsView({ flash }: { flash: (m: string) => void }) {
             />
           </div>
 
+          <div className="mb-4 rounded-xl border border-[#E3EDEE] bg-white p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-[#9DB1B5]">
+                Visitors by area{geo.length ? ` (${geo.length} area${geo.length === 1 ? "" : "s"})` : ""}
+              </span>
+              <span className="text-[11px] text-[#9DB1B5]">City-level edge geo · no IP stored</span>
+            </div>
+            {geoCircles.length ? (
+              <div className="relative h-[320px] overflow-hidden rounded-[10px] border border-[#E3EDEE]">
+                <DrosiaMap
+                  circles={geoCircles}
+                  zoom={5}
+                  fitToMarkers
+                  interactive
+                  showAttribution={false}
+                  showZoomControl
+                  className="absolute inset-0"
+                  ariaLabel="Visitor areas map"
+                />
+              </div>
+            ) : (
+              <div className="text-[12px] text-[#9DB1B5]">
+                No area data in this range yet — region/city detail is recorded from 16 Jul 2026 onward; earlier visits carry only a country.
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <BreakdownCard title="Top sources" rows={web?.sources ?? []} empty="No traffic yet" />
             <BreakdownCard title="Top reports (views)" rows={web?.top_reports ?? []} empty="No report views yet" mono hrefFor={(token) => `/r/${token}`} />
             <BreakdownCard title="Countries" rows={web?.countries ?? []} empty="No data yet" />
+            <BreakdownCard title="Top areas" rows={areaRows} empty="No area data yet (recorded from 16 Jul 2026)" />
             <BreakdownCard title="Operating systems" rows={web?.systems ?? []} empty="No OS data yet" />
             <BreakdownCard
               title="Languages"

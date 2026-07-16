@@ -16,9 +16,20 @@ export interface DrosiaMapPoint {
   title?: string;
 }
 
+/** Quantity-scaled circle (e.g. visitors per area); tooltip text is escaped. */
+export interface DrosiaMapCircle {
+  lat: number;
+  lng: number;
+  /** Radius in screen pixels (circleMarker semantics — constant across zoom). */
+  radius: number;
+  color?: string;
+  tooltip?: string;
+}
+
 interface DrosiaMapProps {
   reports?: PublicReport[];
   points?: DrosiaMapPoint[];
+  circles?: DrosiaMapCircle[];
   mode?: MapMode;
   center?: [number, number];
   zoom?: number;
@@ -51,6 +62,7 @@ const TILE_ATTRIBUTION =
 export function DrosiaMap({
   reports = [],
   points = [],
+  circles = [],
   mode = "pins",
   center,
   zoom = DEFAULT_ZOOM,
@@ -88,12 +100,17 @@ export function DrosiaMap({
     () => points.filter((point) => isValidLatLng(point.lat, point.lng)),
     [points],
   );
+  const mappedCircles = useMemo(
+    () => circles.filter((circle) => isValidLatLng(circle.lat, circle.lng)),
+    [circles],
+  );
   const locations = useMemo(
     () => [
       ...mappedReports.map((report): [number, number] => [report.lat, report.lng]),
       ...mappedPoints.map((point): [number, number] => [point.lat, point.lng]),
+      ...mappedCircles.map((circle): [number, number] => [circle.lat, circle.lng]),
     ],
-    [mappedPoints, mappedReports],
+    [mappedCircles, mappedPoints, mappedReports],
   );
 
   useEffect(() => {
@@ -163,6 +180,8 @@ export function DrosiaMap({
         ),
       );
 
+      overlaysRef.current.push(...mappedCircles.map((circle) => addQuantityCircle(L, map, circle)));
+
       if (fitToMarkers && locations.length > 1) {
         const bounds = L.latLngBounds(locations);
         if (bounds.isValid()) map.fitBounds(bounds.pad(0.2), { animate: false, maxZoom: 14 });
@@ -189,6 +208,7 @@ export function DrosiaMap({
     fitToMarkers,
     interactive,
     locations,
+    mappedCircles,
     mappedPoints,
     mappedReports,
     mode,
@@ -273,6 +293,22 @@ function addPointMarker(
   });
 
   if (onClick) marker.on("click keypress", onClick);
+  marker.addTo(map);
+  return marker;
+}
+
+function addQuantityCircle(L: typeof import("leaflet"), map: LeafletMapInstance, circle: DrosiaMapCircle): CircleMarker {
+  const color = circle.color ?? "var(--primary)";
+  const marker = L.circleMarker([circle.lat, circle.lng], {
+    radius: circle.radius,
+    color,
+    weight: 1.5,
+    opacity: 0.85,
+    fillColor: color,
+    fillOpacity: 0.35,
+  });
+  // Tooltip content is treated as HTML by Leaflet — escape it.
+  if (circle.tooltip) marker.bindTooltip(escapeHtml(circle.tooltip), { direction: "top" });
   marker.addTo(map);
   return marker;
 }

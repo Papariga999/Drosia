@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { rateLimitDurable, clientIp } from "@/lib/rate-limit";
 import { readJsonBody } from "@/lib/http-body";
+import { edgeGeo } from "@/lib/edge-geo";
 
 export const runtime = "nodejs";
 
@@ -90,7 +91,10 @@ export async function POST(req: Request): Promise<Response> {
 
   const host = req.headers.get("host");
   const source = normalizeSource(rawPath, typeof body.ref === "string" ? body.ref : "", host);
-  const country = (req.headers.get("x-vercel-ip-country") ?? "").toUpperCase().slice(0, 2) || null;
+  // City-level edge geo (country/region/city + rounded city-centroid coords);
+  // never the IP — see lib/edge-geo.ts.
+  const geo = edgeGeo(req.headers);
+  const country = geo.country;
   const os = osFamily(ua, req.headers.get("sec-ch-ua-platform"));
   const sid = typeof body.sid === "string" ? body.sid.slice(0, 64) : null;
   const locale = typeof body.locale === "string" && LOCALES.includes(body.locale) ? body.locale : null;
@@ -105,9 +109,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const admin = getSupabaseAdmin();
   try {
-    const row = { event, path: pathname, report_token: reportToken, source, country, device, os, share_channel: shareChannel, duration_ms: durationMs, sid, locale };
+    const row = { event, path: pathname, report_token: reportToken, source, country, region: geo.region, city: geo.city, geo_lat: geo.lat, geo_lng: geo.lng, device, os, share_channel: shareChannel, duration_ms: durationMs, sid, locale };
     const { error } = await admin.from("web_events").insert(row as never);
-    if (error && /os|share_channel|duration_ms|schema cache|column|PGRST204/i.test(`${error.code ?? ""} ${error.message}`)) {
+    if (error && /os|share_channel|duration_ms|region|city|geo_lat|geo_lng|schema cache|column|PGRST204/i.test(`${error.code ?? ""} ${error.message}`)) {
       await admin
         .from("web_events")
         .insert({ event, path: pathname, report_token: reportToken, source, country, device, sid, locale } as never);
