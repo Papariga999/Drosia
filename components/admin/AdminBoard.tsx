@@ -171,6 +171,12 @@ export function AdminBoard() {
   const [selected, setSelected] = useState<AdminReportRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Bumped by the header ↻ Refresh button; keys the self-fetching subviews so
+  // they remount and re-run their load effects (reports are refetched directly).
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  // Snapshot of the visible (filtered + sorted) queue order at the moment a
+  // report was opened — lets the detail view step prev/next in that order.
+  const [detailNav, setDetailNav] = useState<string[]>([]);
 
   const flash = useCallback((msg: string) => {
     setToast(msg);
@@ -396,14 +402,31 @@ export function AdminBoard() {
     { key: "flags", icon: "⚐", label: "Flags & Disputes" },
   ];
 
+  function stepDetail(dir: 1 | -1) {
+    if (!selected) return;
+    const idx = detailNav.indexOf(selected.id);
+    if (idx === -1) return;
+    // Walk past ids that disappeared since the snapshot (deleted / refetched away).
+    for (let i = idx + dir; i >= 0 && i < detailNav.length; i += dir) {
+      const next = reports.find((r) => r.id === detailNav[i]);
+      if (next) {
+        setSelected(next);
+        return;
+      }
+    }
+  }
+  const detailNavIndex = selected ? detailNav.indexOf(selected.id) : -1;
+
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
     setAuthed(false);
     setScreen("queue");
   }
 
+  // The admin board is light-only; [color-scheme:light] stops the browser from
+  // rendering form controls dark when the OS is in dark mode.
   return (
-    <div lang="en" className="flex h-screen w-full bg-[#F4F8F9] font-sans text-[#0B2B30]">
+    <div lang="en" className="flex h-screen w-full bg-[#F4F8F9] font-sans text-[#0B2B30] [color-scheme:light]">
       {/* Desktop sidebar — replaced by the scrollable chip nav on phones. */}
       <aside className="hidden w-[228px] flex-none flex-col bg-[#0B2B30] py-4 text-white md:flex">
         <div className="flex items-center gap-2.5 px-5 pb-4">
@@ -445,7 +468,17 @@ export function AdminBoard() {
         <div className="flex h-[60px] flex-none items-center gap-3 border-b border-[#E3EDEE] bg-white px-4 md:gap-4 md:px-6">
           <DrosiaMark className="h-6 w-auto flex-none text-[#1ECAD9] md:hidden" />
           <div className="truncate font-display text-[16px] font-black md:text-[18px]">{titles[screen]}</div>
-          <button onClick={fetchReports} className="ml-auto flex-none rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]">
+          <button
+            onClick={() => {
+              setRefreshNonce((n) => n + 1);
+              void (async () => {
+                const list = await fetchReports();
+                // Keep the open detail view in sync with the fresh data.
+                setSelected((prev) => (prev ? list.find((r) => r.id === prev.id) ?? prev : prev));
+              })();
+            }}
+            className="ml-auto flex-none rounded-[9px] border border-[#E3EDEE] bg-[#F4F8F9] px-3 py-2 text-[12px] font-bold text-[#3F5F64]"
+          >
             ↻ Refresh
           </button>
         </div>
@@ -487,7 +520,7 @@ export function AdminBoard() {
               reports={reports}
               loading={loading}
               busy={busy}
-              onOpen={(r) => { setSelected(r); setScreen("detail"); }}
+              onOpen={(r, visible) => { setSelected(r); setDetailNav(visible.map((v) => v.id)); setScreen("detail"); }}
               onApprove={approve}
               onReject={reject}
               onEdit={updateReport}
@@ -496,9 +529,12 @@ export function AdminBoard() {
           )}
           {screen === "detail" && selected && (
             <DetailView
+              key={selected.id}
               report={selected}
               busy={busy}
               onBack={() => { setScreen("queue"); setSelected(null); }}
+              navPosition={detailNavIndex >= 0 ? { index: detailNavIndex, total: detailNav.length } : null}
+              onStep={stepDetail}
               onApprove={(notify) => approve(selected, notify)}
               onReject={(reason) => reject(selected, reason)}
               onEdit={(patch) => updateReport(selected, patch)}
@@ -508,12 +544,12 @@ export function AdminBoard() {
               onResolve={() => resolve(selected)}
             />
           )}
-          {screen === "status" && <StatusView flash={flash} />}
-          {screen === "analytics" && <AnalyticsView flash={flash} />}
-          {screen === "leads" && <LeadsView flash={flash} />}
-          {screen === "authorities" && <AuthoritiesView flash={flash} />}
-          {screen === "delivery" && <DeliveryView flash={flash} />}
-          {screen === "flags" && <FlagsView tab={flagTab} setTab={setFlagTab} flash={flash} />}
+          {screen === "status" && <StatusView key={refreshNonce} flash={flash} />}
+          {screen === "analytics" && <AnalyticsView key={refreshNonce} flash={flash} />}
+          {screen === "leads" && <LeadsView key={refreshNonce} flash={flash} />}
+          {screen === "authorities" && <AuthoritiesView key={refreshNonce} flash={flash} />}
+          {screen === "delivery" && <DeliveryView key={refreshNonce} flash={flash} />}
+          {screen === "flags" && <FlagsView key={refreshNonce} tab={flagTab} setTab={setFlagTab} flash={flash} />}
         </div>
       </main>
 
@@ -552,7 +588,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
   }
 
   return (
-    <div lang="en" className="flex h-screen w-full items-center justify-center font-sans" style={{ background: "radial-gradient(120% 80% at 50% 0%,#E0F7FA,#F2FBFC)" }}>
+    <div lang="en" className="flex h-screen w-full items-center justify-center font-sans [color-scheme:light]" style={{ background: "radial-gradient(120% 80% at 50% 0%,#E0F7FA,#F2FBFC)" }}>
       <div className="mx-4 w-full max-w-[360px] rounded-[20px] bg-white p-8 text-center shadow-float">
         <DrosiaMark className="mx-auto mb-2.5 h-14 w-auto text-primary" />
         <div className="font-display text-[24px] font-black text-[#0B2B30]">Drosia Admin</div>
@@ -563,7 +599,7 @@ function SignIn({ onSignIn }: { onSignIn: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          className="mb-2 w-full rounded-[11px] border-[1.5px] border-[#E0EAEB] p-3 text-[15px] text-[#0B2B30] outline-none focus:border-primary"
+          className="mb-2 w-full rounded-[11px] border-[1.5px] border-[#E0EAEB] bg-white p-3 text-[15px] text-[#0B2B30] outline-none focus:border-primary"
         />
         {error && <div className="mb-2 text-[12px] font-bold text-[#C0392B]">{error}</div>}
         <button
@@ -632,7 +668,9 @@ function ReportsBoard({
   reports: AdminReportRow[];
   loading: boolean;
   busy: boolean;
-  onOpen: (r: AdminReportRow) => void;
+  // Receives the visible (filtered + sorted) list so the detail view can
+  // navigate prev/next in the order the operator was looking at.
+  onOpen: (r: AdminReportRow, visible: AdminReportRow[]) => void;
   onApprove: (r: AdminReportRow, notify: boolean) => void;
   onReject: (r: AdminReportRow, reason: string) => void;
   onEdit: (
@@ -800,7 +838,7 @@ function ReportsBoard({
       ) : !reports.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports yet.</div>
       ) : view === "map" ? (
-        <ReportsMap rows={rows} onOpen={onOpen} />
+        <ReportsMap rows={rows} onOpen={(r) => onOpen(r, rows)} />
       ) : !rows.length ? (
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-8 text-center text-[13px] text-[#9DB1B5]">No reports match the current filters.</div>
       ) : (
@@ -812,7 +850,7 @@ function ReportsBoard({
               key={r.id}
               report={r}
               busy={busy}
-              onOpen={onOpen}
+              onOpen={(row) => onOpen(row, rows)}
               onApprove={onApprove}
               onReject={onReject}
               onEdit={onEdit}
@@ -846,7 +884,7 @@ function ReportsBoard({
                 style={{ gridTemplateColumns: cols, background: lm.rowTint, boxShadow: `inset 4px 0 0 0 ${lm.color}` }}
               >
                 <button
-                  onClick={() => onOpen(r)}
+                  onClick={() => onOpen(r, rows)}
                   className="grid min-w-0 items-center text-left hover:bg-[#F4F8F9]"
                   style={{ gridTemplateColumns: reportCols, gridColumn: "1 / span 8" }}
                   aria-label={`Open report ${r.public_token.slice(0, 8)}`}
@@ -1192,6 +1230,8 @@ function DetailView({
   report,
   busy,
   onBack,
+  navPosition,
+  onStep,
   onApprove,
   onReject,
   onEdit,
@@ -1203,6 +1243,9 @@ function DetailView({
   report: AdminReportRow;
   busy: boolean;
   onBack: () => void;
+  // Position within the queue order the report was opened from (null = unknown).
+  navPosition: { index: number; total: number } | null;
+  onStep: (dir: 1 | -1) => void;
   onApprove: (notify: boolean) => void;
   onReject: (reason: string) => void;
   onEdit: (patch: { category?: string; description?: string | null; authority_id?: string | null }) => Promise<boolean>;
@@ -1255,6 +1298,27 @@ function DetailView({
           Created {shortDate(report.created_at)}
           {report.notified_at ? ` · Notified ${shortDate(report.notified_at)}` : ""}
         </span>
+        {navPosition && (
+          <span className="flex items-center gap-1.5">
+            <button
+              onClick={() => onStep(-1)}
+              disabled={navPosition.index <= 0}
+              className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-1.5 text-[12px] font-bold text-[#3F5F64] disabled:opacity-40"
+            >
+              ‹ Prev
+            </button>
+            <span className="tnum text-[11px] text-[#9DB1B5]">
+              {navPosition.index + 1} / {navPosition.total}
+            </span>
+            <button
+              onClick={() => onStep(1)}
+              disabled={navPosition.index >= navPosition.total - 1}
+              className="rounded-[9px] border border-[#E3EDEE] bg-white px-3 py-1.5 text-[12px] font-bold text-[#3F5F64] disabled:opacity-40"
+            >
+              Next ›
+            </button>
+          </span>
+        )}
       </div>
       <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
         <div className="rounded-xl border border-[#E3EDEE] bg-white p-4">

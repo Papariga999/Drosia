@@ -67,6 +67,15 @@
   --shadow-float: 0 18px 50px rgba(0, 0, 0, 0.5);
 }
 
+/* UA-rendered form controls, scrollbars etc. follow a manual theme override,
+   not just the OS preference. */
+:root.light {
+  color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
+}
+
 /* Follow the OS when the user hasn't chosen a theme manually. */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
