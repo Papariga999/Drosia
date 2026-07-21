@@ -1,4 +1,9 @@
 import "server-only";
+import * as React from "react";
+import { render } from "@react-email/components";
+import AuthorityReport, { authoritySubject, authorityEmailText } from "@/emails/AuthorityReport";
+import { categoryLabel, isReportCategory } from "@/lib/categories";
+import { LOCALES, type Locale } from "@/lib/i18n";
 
 /**
  * Report delivery abstraction: 'email' (Resend) or 'open311' per authority.
@@ -54,23 +59,33 @@ function warnIfUnverifiedDomain(from: string): void {
   }
 }
 
-/** Minimal localized authority email body. Kept inline; React Email is a later polish. */
-function emailBody(locale: string, category: string, url: string): { subject: string; text: string } {
-  if (locale === "el") {
-    return {
-      subject: `Νέα αναφορά πολίτη: ${category}`,
-      text: `Νέα αναφορά πολίτη στην περιοχή σας (${category}).\nΑνωνυμοποιημένη φωτογραφία & τοποθεσία: ${url}\n\nDrosia · μόνο πραγματικά δεδομένα, κανένα προσωπικό στοιχείο.`,
-    };
-  }
-  if (locale === "de") {
-    return {
-      subject: `Neue Bürgermeldung: ${category}`,
-      text: `Neue Bürgermeldung in Ihrem Gebiet (${category}).\nAnonymisiertes Foto & Standort: ${url}\n\nDrosia · nur Fakten, keine personenbezogenen Daten.`,
-    };
-  }
+/** Narrow the authority's stored locale string to a supported Locale (fallback: English). */
+function toLocale(locale: string): Locale {
+  return (LOCALES as readonly string[]).includes(locale) ? (locale as Locale) : "en";
+}
+
+/**
+ * Build the authority email (subject + HTML + plain-text fallback), localized to
+ * the recipient authority's language. The raw category enum is resolved to its
+ * localized label (categoryLabel) — the authority reads "Παράνομη χωματερή",
+ * never the "illegal_dump" slug. HTML is rendered from emails/AuthorityReport;
+ * the plain-text part always ships alongside for deliverability.
+ */
+async function buildAuthorityEmail(
+  locale: string,
+  category: string,
+  url: string,
+): Promise<{ subject: string; text: string; html: string }> {
+  const loc = toLocale(locale);
+  const label = isReportCategory(category) ? categoryLabel(category, loc) : category;
+  const html = await render(
+    React.createElement(AuthorityReport, { locale: loc, categoryLabel: label, reportUrl: url }),
+    { pretty: false },
+  );
   return {
-    subject: `New citizen report: ${category}`,
-    text: `A new citizen report in your area (${category}).\nAnonymized photo & location: ${url}\n\nDrosia · facts only, no personal data.`,
+    subject: authoritySubject(loc, label),
+    text: authorityEmailText(loc, label, url),
+    html,
   };
 }
 
@@ -83,7 +98,7 @@ class EmailDeliverer implements ReportDeliverer {
     if (!input.recipient) return { status: "failed", error: "no recipient email" };
 
     const url = reportUrl(input.reportToken);
-    const { subject, text } = emailBody(input.locale, input.category, url);
+    const { subject, text, html } = await buildAuthorityEmail(input.locale, input.category, url);
     // Only a real Resend key (re_…) triggers a live send.
     const rawKey = process.env.RESEND_API_KEY;
     const apiKey = rawKey && rawKey.startsWith("re_") ? rawKey : null;
@@ -119,6 +134,7 @@ class EmailDeliverer implements ReportDeliverer {
           to: input.recipient,
           subject,
           text,
+          html,
           tags: [
             { name: "drosia_kind", value: "authority_report" },
             { name: "delivery_log_id", value: input.deliveryLogId },
